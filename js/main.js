@@ -1,9 +1,9 @@
 /**
- * Main Application Entrypoint — FAIR WHEEL (Minimalist High-Legibility Edition)
+ * Main Application Entrypoint — FAIR WHEEL (Luxury Premium + Real Gravity Physics Edition)
  * Features:
- * - Stationary, rock-steady wheel (no hover wobble) with prominent center SPIN button
- * - Configurable Spin Speed (Fast 1.8s / Normal 3.8s / Slow 6.5s)
- * - Clean progressive disclosure UX with CSPRNG + Lemire exact fairness
+ * - Interactive Drag-to-Spin with angular velocity tracking
+ * - Real Downward Gravity (g at 6 o'clock) Rollback when dragged/flicked below threshold velocity
+ * - Effortless 1-by-1 Choice Entry at the top, Rules in the middle, Preset Save at the bottom
  */
 
 import {
@@ -35,6 +35,10 @@ const SPIN_SPEED_CONFIG = {
   slow: { duration: 6500, minSpins: 9, maxSpins: 12 }
 };
 
+// Minimum angular velocity (rad/s) required when flicking the wheel to trigger a full spin.
+// Below this threshold, downward gravity (g) pulls the wheel back to equilibrium!
+const FLICK_VELOCITY_THRESHOLD = 2.6;
+
 let selectedSpeedKey = 'normal';
 
 // DOM Elements
@@ -48,6 +52,7 @@ const btnShareUrl = document.getElementById('btnShareUrl');
 const hudCurrentLabel = document.getElementById('hudCurrentLabel');
 const hudCurrentProb = document.getElementById('hudCurrentProb');
 const hudCurrentWeight = document.getElementById('hudCurrentWeight');
+const physicsHintText = document.getElementById('physicsHintText');
 
 const wheelViewport = document.getElementById('wheelViewport');
 const wheelCanvas = document.getElementById('wheelCanvas');
@@ -63,11 +68,9 @@ const btnCloseWinner = document.getElementById('btnCloseWinner');
 const storageStatusTag = document.getElementById('storageStatusTag');
 const presetSelect = document.getElementById('presetSelect');
 const btnNewPreset = document.getElementById('btnNewPreset');
-const btnRenamePreset = document.getElementById('btnRenamePreset');
 const btnDeletePreset = document.getElementById('btnDeletePreset');
 const presetNameForm = document.getElementById('presetNameForm');
 const inputPresetName = document.getElementById('inputPresetName');
-const btnCancelPresetName = document.getElementById('btnCancelPresetName');
 const btnExportJson = document.getElementById('btnExportJson');
 const inputImportJson = document.getElementById('inputImportJson');
 
@@ -84,7 +87,6 @@ const btnRestoreEliminated = document.getElementById('btnRestoreEliminated');
 const btnToggleBulkEdit = document.getElementById('btnToggleBulkEdit');
 const addChoiceForm = document.getElementById('addChoiceForm');
 const inputNewLabel = document.getElementById('inputNewLabel');
-const inputNewWeight = document.getElementById('inputNewWeight');
 const bulkEditPanel = document.getElementById('bulkEditPanel');
 const textareaBulk = document.getElementById('textareaBulk');
 const btnApplyBulk = document.getElementById('btnApplyBulk');
@@ -104,23 +106,28 @@ const historyListContainer = document.getElementById('historyListContainer');
 
 // Local state
 let currentDistribution = { activeItems: [], prefixSums: [], totalEffectiveWeight: 0 };
-let nameFormMode = 'rename';
 let highlightedWinnerId = null;
 let toastTimer = null;
 
 const renderer = createWheelRenderer(wheelCanvas);
 
 const animator = createWheelAnimator({
-  onFrame({ rotationRad, pointerAngle, spinning, currentSlice }) {
-    renderer.renderFrame(rotationRad, pointerAngle, spinning);
+  onFrame({ rotationRad, pointerAngle, spinning, currentSlice, particles }) {
+    renderer.renderFrame(rotationRad, pointerAngle, spinning, particles);
     updatePointerHud(currentSlice);
   },
   onSliceTick(_slice, normalizedSpeed) {
     sound.playTick(normalizedSpeed);
   },
+  onRollbackNotice() {
+    physicsHintText.textContent =
+      '⚓ แรงเหวี่ยงยังไม่พ้นจุดศูนย์ถ่วง — แรงโน้มถ่วง g ด้านล่างจึงดึงวงล้อหมุนกลับ (สะบัดให้แรงขึ้นหรือกดปุ่ม SPIN เพื่อสุ่ม!)';
+  },
   onComplete(resultPayload) {
-    btnPrimarySpin.textContent = 'หมุนวงล้อ (SPIN)';
+    btnPrimarySpin.textContent = '✦ หมุนวงล้อ (SPIN)';
     btnPrimarySpin.classList.remove('is-skip-mode');
+    physicsHintText.textContent =
+      '💡 กดปุ่ม SPIN หรือใช้นิ้ว/เมาส์ลากวงล้อแล้วสะบัดหมุน (หากดึงเบาเกินไป แรงโน้มถ่วง g ด้านล่างจะดึงวงล้อหมุนกลับตามฟิสิกส์จริง)';
 
     highlightedWinnerId = resultPayload.item.id;
     sound.playWinFanfare();
@@ -165,9 +172,11 @@ function updatePointerHud(slice) {
 }
 
 /**
- * Triggers a cryptographically fair spin using the selected speed, or skips to result if already spinning.
+ * Triggers a cryptographically fair spin or skips to result if already spinning.
+ * @param {number} [direction=1] - +1 clockwise, -1 counter-clockwise
+ * @param {number | null} [flickSpeedRadPerSec=null] - Optional flick velocity to scale spin duration
  */
-function triggerSpinOrSkip() {
+function triggerSpinOrSkip(direction = 1, flickSpeedRadPerSec = null) {
   sound.unlock();
 
   if (animator.isSpinning()) {
@@ -190,13 +199,19 @@ function triggerSpinOrSkip() {
 
   const { winnerEntry } = sample;
   const speedCfg = SPIN_SPEED_CONFIG[selectedSpeedKey] || SPIN_SPEED_CONFIG.normal;
+
+  // If triggered by a physical flick gesture, scale extra spins slightly with flick speed
+  let minSpins = speedCfg.minSpins;
+  let maxSpins = speedCfg.maxSpins;
+  let duration = speedCfg.duration;
+  if (flickSpeedRadPerSec !== null) {
+    const boost = Math.min(4, Math.floor(Math.abs(flickSpeedRadPerSec) / 6));
+    minSpins = Math.max(3, minSpins + boost - 1);
+    maxSpins = Math.max(minSpins + 1, maxSpins + boost);
+  }
+
   const currentRotation = animator.getRotation();
-  const { targetRotation } = computeTargetRotation(
-    currentRotation,
-    winnerEntry,
-    speedCfg.minSpins,
-    speedCfg.maxSpins
-  );
+  const { targetRotation } = computeTargetRotation(currentRotation, winnerEntry, minSpins, maxSpins);
 
   const reducedMotion =
     typeof window.matchMedia === 'function' &&
@@ -208,9 +223,10 @@ function triggerSpinOrSkip() {
   renderer.setDistribution(dist, null);
   animator.startSpin({
     targetRotation,
-    duration: speedCfg.duration,
+    duration,
     distribution: dist,
     reducedMotion,
+    direction,
     resultPayload: {
       item: winnerEntry.item,
       probability: winnerEntry.probability,
@@ -220,7 +236,7 @@ function triggerSpinOrSkip() {
   });
 }
 
-// Speed selector buttons
+// Speed selector pills
 speedButtons.forEach((btn) => {
   btn.addEventListener('click', () => {
     const speed = btn.getAttribute('data-speed');
@@ -231,19 +247,23 @@ speedButtons.forEach((btn) => {
   });
 });
 
-function renderPresetsDropdown(state) {
+function renderPresetsSection(state) {
+  if (document.activeElement !== inputPresetName) {
+    inputPresetName.value = state.currentPreset.name;
+  }
+
   presetSelect.replaceChildren();
   for (const preset of state.presets) {
     const opt = document.createElement('option');
     opt.value = preset.id;
-    opt.textContent = `${preset.name} (${preset.items.length})`;
+    opt.textContent = `${preset.name} (${preset.items.length} ข้อ)`;
     if (preset.id === state.currentPreset.id) {
       opt.selected = true;
     }
     presetSelect.appendChild(opt);
   }
   btnDeletePreset.disabled = state.presets.length <= 1;
-  storageStatusTag.textContent = state.storageAvailable ? 'Auto-saved' : 'Memory mode';
+  storageStatusTag.textContent = state.storageAvailable ? '✓ บันทึกอัตโนมัติ' : 'Memory Mode';
 }
 
 function renderModeControls(state) {
@@ -281,14 +301,14 @@ function renderChoicesList(state, dist) {
 
   choicesSummaryText.textContent =
     eliminatedCount > 0
-      ? `เปิดใช้งาน ${dist.activeItems.length} ข้อ (พักไว้ ${eliminatedCount} ข้อ)`
-      : `เปิดใช้งาน ${dist.activeItems.length} ข้อ`;
+      ? `ตัวเลือกที่เปิดอยู่ (${dist.activeItems.length}) · พักไว้ (${eliminatedCount})`
+      : `ตัวเลือกทั้งหมด (${dist.activeItems.length})`;
   btnRestoreEliminated.hidden = eliminatedCount === 0;
 
   if (items.length === 0) {
     const emptyMsg = document.createElement('div');
     emptyMsg.className = 'history-item';
-    emptyMsg.textContent = 'ยังไม่มีคำตอบ พิมพ์คำตอบด้านบนเพื่อเริ่มใช้งาน';
+    emptyMsg.textContent = 'ยังไม่มีคำตอบ พิมพ์คำตอบช่องด้านบนแล้วกด Enter ได้เลย!';
     choicesListContainer.appendChild(emptyMsg);
     return;
   }
@@ -301,13 +321,13 @@ function renderChoicesList(state, dist) {
     row.className = `choice-row${item.eliminated ? ' is-eliminated' : ''}`;
     row.setAttribute('role', 'listitem');
 
-    // 1. Color swatch + label
+    // 1. Color swatch + large editable label
     const cellMain = document.createElement('div');
     cellMain.className = 'choice-cell-main';
 
     const swatch = document.createElement('span');
     swatch.className = 'choice-swatch';
-    swatch.style.backgroundColor = activeInfo ? activeInfo.color.fill : '#E2E8F0';
+    swatch.style.backgroundColor = activeInfo ? activeInfo.color.fill : '#475569';
 
     const labelInput = document.createElement('input');
     labelInput.type = 'text';
@@ -321,7 +341,20 @@ function renderChoicesList(state, dist) {
 
     cellMain.append(swatch, labelInput);
 
-    // 2. Weight input
+    // 2. Weight Stepper [- value +] for effortless adjustment
+    const stepper = document.createElement('div');
+    stepper.className = 'weight-stepper';
+
+    const btnMinus = document.createElement('button');
+    btnMinus.type = 'button';
+    btnMinus.className = 'weight-step-btn';
+    btnMinus.textContent = '−';
+    btnMinus.title = 'ลดน้ำหนัก';
+    btnMinus.addEventListener('click', () => {
+      const nextW = Math.max(1, Math.round((Number(item.weight) - 1) * 10) / 10);
+      store.updateItem(item.id, { weight: nextW });
+    });
+
     const weightInput = document.createElement('input');
     weightInput.type = 'number';
     weightInput.className = 'choice-weight-input';
@@ -333,6 +366,18 @@ function renderChoicesList(state, dist) {
     weightInput.addEventListener('change', () => {
       store.updateItem(item.id, { weight: weightInput.value });
     });
+
+    const btnPlus = document.createElement('button');
+    btnPlus.type = 'button';
+    btnPlus.className = 'weight-step-btn';
+    btnPlus.textContent = '+';
+    btnPlus.title = 'เพิ่มน้ำหนัก';
+    btnPlus.addEventListener('click', () => {
+      const nextW = Math.min(10000, Math.round((Number(item.weight) + 1) * 10) / 10);
+      store.updateItem(item.id, { weight: nextW });
+    });
+
+    stepper.append(btnMinus, weightInput, btnPlus);
 
     // 3. Probability % + wins
     const cellProb = document.createElement('div');
@@ -383,7 +428,7 @@ function renderChoicesList(state, dist) {
     });
 
     cellActions.append(btnToggleActive, btnDelete);
-    row.append(cellMain, weightInput, cellProb, cellActions);
+    row.append(cellMain, stepper, cellProb, cellActions);
     choicesListContainer.appendChild(row);
   }
 }
@@ -437,7 +482,7 @@ function syncAll(state) {
   currentDistribution = computeDistribution(state.currentPreset.items, state.currentPreset.mode);
   btnPrimarySpin.disabled = currentDistribution.activeItems.length === 0 && !animator.isSpinning();
 
-  renderPresetsDropdown(state);
+  renderPresetsSection(state);
   renderModeControls(state);
   renderChoicesList(state, currentDistribution);
   renderHistoryList(state);
@@ -480,10 +525,102 @@ const resizeObserver = new ResizeObserver((entries) => {
 });
 resizeObserver.observe(wheelViewport);
 
-// Stationary Wheel Click Handler: Clicking the wheel or center SPIN button spins cleanly without wobble
-wheelCanvas.addEventListener('click', () => {
-  triggerSpinOrSkip();
+/**
+ * Interactive Wheel Drag & Real Gravity Physics Handler:
+ * - Clicking the center SPIN medallion triggers a full CSPRNG spin immediately.
+ * - Dragging the outer wheel rotates it in real time with peg clicks:
+ *   - If released with angular speed >= FLICK_VELOCITY_THRESHOLD -> Full CSPRNG Spin in flick direction!
+ *   - If released with angular speed < FLICK_VELOCITY_THRESHOLD -> Real Gravity (g at 6 o'clock) pulls it back!
+ */
+let dragState = null;
+
+function unwrapAngleDelta(newAngle, prevAngle) {
+  let d = newAngle - prevAngle;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return d;
+}
+
+wheelCanvas.addEventListener('pointerdown', (e) => {
+  sound.unlock();
+  if (animator.isSpinning()) {
+    triggerSpinOrSkip();
+    return;
+  }
+
+  const rect = wheelCanvas.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  const distFromCenter = Math.hypot(e.clientX - cx, e.clientY - cy);
+  const wheelRadiusPx = rect.width * 0.445;
+
+  // Clicking the center SPIN medallion (inner 25% of radius) spins immediately
+  if (distFromCenter <= wheelRadiusPx * 0.26) {
+    triggerSpinOrSkip(1, null);
+    return;
+  }
+
+  wheelCanvas.setPointerCapture(e.pointerId);
+  animator.beginDrag(currentDistribution);
+
+  dragState = {
+    pointerId: e.pointerId,
+    lastAngle: Math.atan2(e.clientY - cy, e.clientX - cx),
+    lastTimeMs: performance.now(),
+    totalAbsMovedRad: 0,
+    velocityRadPerSec: 0
+  };
 });
+
+wheelCanvas.addEventListener('pointermove', (e) => {
+  if (!dragState || dragState.pointerId !== e.pointerId) return;
+
+  const rect = wheelCanvas.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  const nowMs = performance.now();
+  const dtSec = Math.max(0.004, (nowMs - dragState.lastTimeMs) / 1000);
+
+  const currentAngle = Math.atan2(e.clientY - cy, e.clientX - cx);
+  const deltaRad = unwrapAngleDelta(currentAngle, dragState.lastAngle);
+
+  dragState.lastAngle = currentAngle;
+  dragState.lastTimeMs = nowMs;
+  dragState.totalAbsMovedRad += Math.abs(deltaRad);
+
+  const instantVel = deltaRad / dtSec;
+  dragState.velocityRadPerSec = dragState.velocityRadPerSec * 0.4 + instantVel * 0.6;
+
+  animator.dragBy(deltaRad, dtSec);
+});
+
+function handlePointerRelease(e) {
+  if (!dragState || dragState.pointerId !== e.pointerId) return;
+  const nowMs = performance.now();
+  const idleSinceMoveSec = (nowMs - dragState.lastTimeMs) / 1000;
+  // Decay velocity if user held pointer still before releasing
+  const releaseVelocity = idleSinceMoveSec > 0.12 ? 0 : dragState.velocityRadPerSec;
+  const totalMoved = dragState.totalAbsMovedRad;
+  dragState = null;
+
+  // Quick tap without dragging -> spin
+  if (totalMoved < 0.035) {
+    triggerSpinOrSkip(1, null);
+    return;
+  }
+
+  // Strong flick -> Full CSPRNG spin in the direction of the flick
+  if (Math.abs(releaseVelocity) >= FLICK_VELOCITY_THRESHOLD) {
+    const dir = releaseVelocity >= 0 ? 1 : -1;
+    triggerSpinOrSkip(dir, releaseVelocity);
+  } else {
+    // Weak drag / sub-threshold release -> Real downward gravity (g) rollback physics!
+    animator.startGravityRollback(releaseVelocity);
+  }
+}
+
+wheelCanvas.addEventListener('pointerup', handlePointerRelease);
+wheelCanvas.addEventListener('pointercancel', handlePointerRelease);
 
 window.addEventListener('keydown', (e) => {
   const tag = document.activeElement?.tagName;
@@ -491,13 +628,13 @@ window.addEventListener('keydown', (e) => {
 
   if (e.code === 'Space' && !isTyping) {
     e.preventDefault();
-    triggerSpinOrSkip();
+    triggerSpinOrSkip(1, null);
   } else if (e.code === 'Escape' && !winnerBanner.hidden) {
     winnerBanner.hidden = true;
   }
 });
 
-btnPrimarySpin.addEventListener('click', triggerSpinOrSkip);
+btnPrimarySpin.addEventListener('click', () => triggerSpinOrSkip(1, null));
 
 btnResetStats.addEventListener('click', () => {
   if (animator.isSpinning()) return;
@@ -523,7 +660,7 @@ btnShareUrl.addEventListener('click', async () => {
     const shareUrl = `${window.location.origin}${window.location.pathname}#preset=${payload}`;
     if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
       await navigator.clipboard.writeText(shareUrl);
-      showToast('คัดลอกลิงก์ชุดคำตอบลง Clipboard แล้ว');
+      showToast('คัดลอกลิงก์แชร์ชุดคำตอบลง Clipboard แล้ว!');
     } else {
       window.location.hash = `preset=${payload}`;
       showToast('อัปเดตลิงก์บนแถบ URL แล้ว คัดลอกไปแชร์ได้เลย');
@@ -533,45 +670,83 @@ btnShareUrl.addEventListener('click', async () => {
   }
 });
 
-// Preset Controls
-presetSelect.addEventListener('change', () => {
-  highlightedWinnerId = null;
-  winnerBanner.hidden = true;
-  store.selectPreset(presetSelect.value);
+// Section 1: Quick Add Single Choice (Type & Enter)
+addChoiceForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const label = inputNewLabel.value.trim();
+  if (!label) return;
+  if (store.addItem(label, 1)) {
+    inputNewLabel.value = '';
+    inputNewLabel.focus();
+  }
 });
 
-btnNewPreset.addEventListener('click', () => {
-  nameFormMode = 'new';
-  inputPresetName.value = `ชุดคำตอบ #${store.getState().presets.length + 1}`;
-  presetNameForm.hidden = false;
-  inputPresetName.focus();
-  inputPresetName.select();
+btnRestoreEliminated.addEventListener('click', () => {
+  store.restoreEliminatedItems();
+  showToast('คืนค่าตัวเลือกที่พักไว้ทั้งหมดแล้ว');
 });
 
-btnRenamePreset.addEventListener('click', () => {
-  nameFormMode = 'rename';
-  inputPresetName.value = store.getState().currentPreset.name;
-  presetNameForm.hidden = false;
-  inputPresetName.focus();
-  inputPresetName.select();
+btnToggleBulkEdit.addEventListener('click', () => {
+  const isHidden = bulkEditPanel.hidden;
+  if (isHidden) {
+    const items = store.getState().currentPreset.items;
+    textareaBulk.value = items
+      .map((item) => (item.weight !== 1 ? `${item.label} | ${item.weight}` : item.label))
+      .join('\n');
+    bulkEditPanel.hidden = false;
+    textareaBulk.focus();
+  } else {
+    bulkEditPanel.hidden = true;
+  }
 });
 
-btnCancelPresetName.addEventListener('click', () => {
-  presetNameForm.hidden = true;
+btnCancelBulk.addEventListener('click', () => {
+  bulkEditPanel.hidden = true;
 });
 
+btnApplyBulk.addEventListener('click', () => {
+  store.replaceItemsFromBulkText(textareaBulk.value);
+  bulkEditPanel.hidden = true;
+  showToast('อัปเดตรายการคำตอบจากข้อความหลายบรรทัดเรียบร้อย');
+});
+
+// Section 2: Mode Selection
+btnModeIndependent.addEventListener('click', () => {
+  store.setMode('independent');
+});
+
+btnSubModeBalance.addEventListener('click', () => {
+  store.setMode('balance');
+});
+
+btnSubModeMomentum.addEventListener('click', () => {
+  store.setMode('momentum');
+});
+
+chkEliminateWinner.addEventListener('change', () => {
+  store.setEliminateWinner(chkEliminateWinner.checked);
+});
+
+// Section 3 (Bottom): Preset Save & Load
 presetNameForm.addEventListener('submit', (e) => {
   e.preventDefault();
   const name = inputPresetName.value.trim();
   if (!name) return;
-  if (nameFormMode === 'new') {
-    store.createNewPreset(name);
-    showToast(`สร้างชุดคำตอบ "${name}" แล้ว`);
-  } else {
-    store.saveCurrentPresetAs(name);
-    showToast(`เปลี่ยนชื่อเป็น "${name}" แล้ว`);
-  }
-  presetNameForm.hidden = true;
+  store.saveCurrentPresetAs(name);
+  showToast(`บันทึกชื่อชุดคำตอบ "${name}" เรียบร้อยแล้ว`);
+});
+
+btnNewPreset.addEventListener('click', () => {
+  const customName =
+    inputPresetName.value.trim() || `ชุดคำตอบ #${store.getState().presets.length + 1}`;
+  const created = store.createNewPreset(customName);
+  showToast(`บันทึกแยกเป็นชุดคำตอบใหม่ "${created.name}" เรียบร้อยแล้ว`);
+});
+
+presetSelect.addEventListener('change', () => {
+  highlightedWinnerId = null;
+  winnerBanner.hidden = true;
+  store.selectPreset(presetSelect.value);
 });
 
 btnDeletePreset.addEventListener('click', () => {
@@ -613,65 +788,6 @@ inputImportJson.addEventListener('change', async () => {
   } finally {
     inputImportJson.value = '';
   }
-});
-
-// Direct 3-Pill Mode Selection
-btnModeIndependent.addEventListener('click', () => {
-  store.setMode('independent');
-});
-
-btnSubModeBalance.addEventListener('click', () => {
-  store.setMode('balance');
-});
-
-btnSubModeMomentum.addEventListener('click', () => {
-  store.setMode('momentum');
-});
-
-chkEliminateWinner.addEventListener('change', () => {
-  store.setEliminateWinner(chkEliminateWinner.checked);
-});
-
-// Add Choice & Bulk Edit
-addChoiceForm.addEventListener('submit', (e) => {
-  e.preventDefault();
-  const label = inputNewLabel.value.trim();
-  const weight = Number(inputNewWeight.value) || 1;
-  if (!label) return;
-  if (store.addItem(label, weight)) {
-    inputNewLabel.value = '';
-    inputNewWeight.value = '1';
-    inputNewLabel.focus();
-  }
-});
-
-btnRestoreEliminated.addEventListener('click', () => {
-  store.restoreEliminatedItems();
-  showToast('คืนค่าตัวเลือกที่พักไว้ทั้งหมดแล้ว');
-});
-
-btnToggleBulkEdit.addEventListener('click', () => {
-  const isHidden = bulkEditPanel.hidden;
-  if (isHidden) {
-    const items = store.getState().currentPreset.items;
-    textareaBulk.value = items
-      .map((item) => (item.weight !== 1 ? `${item.label} | ${item.weight}` : item.label))
-      .join('\n');
-    bulkEditPanel.hidden = false;
-    textareaBulk.focus();
-  } else {
-    bulkEditPanel.hidden = true;
-  }
-});
-
-btnCancelBulk.addEventListener('click', () => {
-  bulkEditPanel.hidden = true;
-});
-
-btnApplyBulk.addEventListener('click', () => {
-  store.replaceItemsFromBulkText(textareaBulk.value);
-  bulkEditPanel.hidden = true;
-  showToast('อัปเดตรายการคำตอบเรียบร้อย');
 });
 
 // 100,000-Spin Chi-Squared Fairness Audit

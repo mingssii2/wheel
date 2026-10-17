@@ -7,15 +7,15 @@
     http-equiv="Content-Security-Policy"
     content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none';"
   />
-  <title>FAIR WHEEL — วงล้อสุ่มคำตอบมินิมอล แฟร์ตามหลักคณิตศาสตร์</title>
+  <title>FAIR WHEEL — วงล้อสุ่มคำตอบพรีเมียม แฟร์ตามหลักคณิตศาสตร์ & ฟิสิกส์จริง</title>
   <meta
     name="description"
-    content="วงล้อสุ่มคำตอบสไตล์มินิมอล อ่านง่าย ใช้ Web Crypto CSPRNG + Exact Rejection Sampling แสดง Weight และโอกาสออกจริงรายตัวเลือก"
+    content="วงล้อสุ่มคำตอบสไตล์พรีเมียม ฟอนต์ใหญ่ชัดเจน รองรับการลากหมุนตามกฎฟิสิกส์แรงโน้มถ่วง g และสุ่มผลลัพธ์ด้วย Web Crypto CSPRNG"
   />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
-    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Noto+Sans+Thai:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap"
+    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Noto+Sans+Thai:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap"
     rel="stylesheet"
   />
   <link rel="stylesheet" href="./css/styles.css" />
@@ -23,19 +23,20 @@
 <body>
   <div id="srAnnouncement" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 
-  <!-- Minimal Clean Header -->
+  <!-- Premium Top Bar -->
   <header class="top-bar">
     <div class="brand-group">
-      <h1 class="brand-title">Fair Wheel</h1>
-      <span class="brand-badge">CSPRNG 100% Fair</span>
+      <span class="brand-crown">✦</span>
+      <h1 class="brand-title">FAIR WHEEL</h1>
+      <span class="brand-badge">CSPRNG · REAL GRAVITY PHYSICS</span>
     </div>
 
     <div class="top-actions">
-      <button type="button" id="btnSoundToggle" class="btn btn--ghost btn--sm" aria-pressed="true">
+      <button type="button" id="btnSoundToggle" class="btn btn--glass btn--sm" aria-pressed="true">
         <span id="soundIcon">🔊</span>
         <span id="soundLabel">เสียง</span>
       </button>
-      <button type="button" id="btnShareUrl" class="btn btn--outline btn--sm">
+      <button type="button" id="btnShareUrl" class="btn btn--gold-outline btn--sm">
         🔗 แชร์ลิงก์ชุดคำตอบ
       </button>
     </div>
@@ -44,9 +45,9 @@
   <div id="toastBanner" class="toast-banner" role="status" aria-live="polite" hidden></div>
 
   <main class="workspace-grid">
-    <!-- LEFT HERO: Stationary Wheel + Prominent SPIN CTA + Speed Selector -->
-    <section class="wheel-card" aria-label="วงล้อสุ่มคำตอบ">
-      <!-- Subtle top pointer indicator -->
+    <!-- LEFT HERO STAGE: Dominant Premium Wheel + Physics & Speed Controls -->
+    <section class="wheel-stage" aria-label="วงล้อสุ่มคำตอบ">
+      <!-- Live Pointer Telemetry Pill -->
       <div class="pointer-pill">
         <span class="pointer-pill__label">เข็มชี้ที่:</span>
         <strong id="hudCurrentLabel" class="pointer-pill__value">—</strong>
@@ -54,145 +55,121 @@
         <span id="hudCurrentWeight" class="sr-only">W: 1</span>
       </div>
 
-      <!-- Stationary Wheel Viewport -->
+      <!-- Dominant Stationary Wheel Viewport (Supports Drag + Real Gravity Rollback) -->
       <div class="wheel-viewport" id="wheelViewport">
         <canvas
           id="wheelCanvas"
-          width="520"
-          height="520"
+          width="580"
+          height="580"
           role="button"
-          aria-label="กดเพื่อหมุนวงล้อ หรือกดปุ่ม Spacebar"
+          aria-label="วงล้อสุ่มคำตอบ กดปุ่ม SPIN กลางวงล้อ หรือลากเพื่อหมุนตามฟิสิกส์"
           tabindex="0"
         ></canvas>
       </div>
 
-      <!-- Winner Spotlight Result Card (Appears clearly when spin completes) -->
+      <!-- Physics & Interaction Cue -->
+      <p class="physics-hint" id="physicsHintText">
+        💡 <strong>กดปุ่ม SPIN</strong> หรือ <strong>ใช้นิ้ว/เมาส์ลากวงล้อแล้วสะบัดหมุน</strong> (หากดึงเบาเกินไป แรงโน้มถ่วง <code>g</code> ด้านล่างจะดึงวงล้อหมุนกลับตามฟิสิกส์จริง)
+      </p>
+
+      <!-- Winner Spotlight Result Card -->
       <div id="winnerBanner" class="winner-banner" hidden>
         <div class="winner-banner__top">
-          <span class="winner-banner__tag">🎉 คำตอบที่สุ่มได้</span>
+          <span class="winner-banner__tag">🏆 ผลลัพธ์ที่สุ่มได้</span>
           <button type="button" id="btnCloseWinner" class="icon-btn" aria-label="ปิด">✕</button>
         </div>
         <div class="winner-banner__name" id="winnerNameText">—</div>
         <div class="winner-banner__stats" id="winnerStatsText">โอกาสออก 0.00%</div>
       </div>
 
-      <!-- Primary Action Zone: Speed Selector + Big Hero SPIN Button -->
+      <!-- Primary Spin Controls & Speed Selector -->
       <div class="spin-action-zone">
         <div class="speed-selector" role="group" aria-label="ความเร็วการหมุน">
-          <span class="speed-selector__label">ความเร็ว:</span>
-          <button type="button" class="speed-pill" data-speed="fast">⚡ เร็ว</button>
-          <button type="button" class="speed-pill is-active" data-speed="normal">🎯 ปกติ</button>
-          <button type="button" class="speed-pill" data-speed="slow">🐢 ลุ้นนาน</button>
+          <span class="speed-selector__label">ความเร็วหมุน:</span>
+          <button type="button" class="speed-pill" data-speed="fast">⚡ เร็ว (1.8วิ)</button>
+          <button type="button" class="speed-pill is-active" data-speed="normal">🎯 ปกติ (3.8วิ)</button>
+          <button type="button" class="speed-pill" data-speed="slow">🔥 ลุ้นนาน (6.5วิ)</button>
         </div>
 
-        <button type="button" id="btnPrimarySpin" class="btn btn--primary btn--hero">
-          หมุนวงล้อ (SPIN)
+        <button type="button" id="btnPrimarySpin" class="btn btn--gold btn--hero">
+          ✦ หมุนวงล้อ (SPIN)
         </button>
       </div>
     </section>
 
-    <!-- RIGHT PANEL: Essential Choices & Mode Only -->
-    <section class="panel-column" aria-label="ตั้งค่าคำตอบ">
+    <!-- RIGHT WORKBENCH: 1. Choices First -> 2. Rules -> 3. Save Preset at Bottom -->
+    <section class="panel-column" aria-label="จัดการคำตอบและกติกา">
       <div class="panel-card">
-        <!-- Step 1 Header + Preset Selector -->
-        <div class="section-head">
-          <div>
-            <span class="step-label">ขั้นตอนที่ 1</span>
-            <h2 class="section-title">ใส่คำตอบและน้ำหนัก (Weight)</h2>
+        <!-- SECTION 1 (TOP): Easy One-by-One Choice Entry & Large Readable List -->
+        <div class="section-block">
+          <div class="section-head">
+            <div>
+              <span class="step-badge">1. รายการคำตอบ</span>
+              <h2 class="section-title">เพิ่มคำตอบในวงล้อ</h2>
+            </div>
+
+            <div class="head-actions">
+              <button type="button" id="btnRestoreEliminated" class="btn btn--gold-outline btn--xs" hidden>
+                ↺ คืนค่าข้อที่ถูกพัก
+              </button>
+              <button type="button" id="btnToggleBulkEdit" class="btn btn--glass btn--xs">
+                📝 เพิ่มทีละหลายบรรทัด
+              </button>
+            </div>
           </div>
 
-          <div class="preset-bar">
-            <label for="presetSelect" class="sr-only">เลือกชุดคำตอบ</label>
-            <select id="presetSelect" class="input-select"></select>
-            <button type="button" id="btnNewPreset" class="btn btn--ghost btn--xs" title="บันทึกเป็นชุดใหม่">+ ชุดใหม่</button>
-            <button type="button" id="btnRenamePreset" class="btn btn--ghost btn--xs" title="เปลี่ยนชื่อชุดนี้">เปลี่ยนชื่อ</button>
-            <button type="button" id="btnDeletePreset" class="btn btn--ghost btn--xs text-danger" title="ลบชุดนี้">ลบ</button>
-          </div>
-        </div>
-
-        <!-- Inline Preset Name Form (Hidden by default) -->
-        <form id="presetNameForm" class="inline-form" hidden>
-          <input type="text" id="inputPresetName" class="input-text" maxlength="60" placeholder="ชื่อชุดคำตอบ..." required />
-          <button type="submit" class="btn btn--primary btn--xs">บันทึก</button>
-          <button type="button" id="btnCancelPresetName" class="btn btn--ghost btn--xs">ยกเลิก</button>
-        </form>
-
-        <!-- Add New Choice Row -->
-        <form id="addChoiceForm" class="add-form">
-          <input
-            type="text"
-            id="inputNewLabel"
-            class="input-text add-form__label"
-            placeholder="พิมพ์คำตอบที่ต้องการเพิ่ม..."
-            maxlength="120"
-            required
-          />
-          <div class="weight-field" title="น้ำหนักตัวเลือก (ยิ่งมาก ช่องยิ่งกว้าง)">
-            <span>น้ำหนัก</span>
+          <!-- Effortless Single-Item Quick Add (Type & Press Enter) -->
+          <form id="addChoiceForm" class="quick-add-form">
             <input
-              type="number"
-              id="inputNewWeight"
-              value="1"
-              min="0.1"
-              max="10000"
-              step="any"
-              aria-label="น้ำหนักตั้งต้น"
+              type="text"
+              id="inputNewLabel"
+              class="input-text quick-add-form__input"
+              placeholder="พิมพ์คำตอบที่นี่ แล้วกด Enter เพื่อเพิ่มทันที..."
+              maxlength="120"
+              required
             />
+            <input type="hidden" id="inputNewWeight" value="1" />
+            <button type="submit" class="btn btn--gold quick-add-form__btn">+ เพิ่ม</button>
+          </form>
+
+          <!-- Collapsible Bulk Add/Edit Drawer (Only shown when user clicks "เพิ่มทีละหลายบรรทัด") -->
+          <div id="bulkEditPanel" class="drawer-box" hidden>
+            <label for="textareaBulk" class="drawer-label">
+              วางหรือพิมพ์บรรทัดละ 1 คำตอบ (หากต้องการกำหนดน้ำหนักให้พิมพ์ <code>ชื่อคำตอบ | 2</code>):
+            </label>
+            <textarea id="textareaBulk" class="input-textarea" rows="5"></textarea>
+            <div class="drawer-actions">
+              <button type="button" id="btnApplyBulk" class="btn btn--gold btn--xs">✓ นำไปใช้กับวงล้อ</button>
+              <button type="button" id="btnCancelBulk" class="btn btn--glass btn--xs">ยกเลิก</button>
+            </div>
           </div>
-          <button type="submit" class="btn btn--dark">+ เพิ่มคำตอบ</button>
-        </form>
 
-        <!-- Choices List Toolbar -->
-        <div class="list-toolbar">
-          <span id="choicesSummaryText" class="muted-text">ทั้งหมด 6 ตัวเลือก</span>
-          <div class="list-toolbar__actions">
-            <button type="button" id="btnRestoreEliminated" class="btn btn--outline btn--xs" hidden>
-              ↺ คืนค่าข้อที่ถูกพัก
-            </button>
-            <button type="button" id="btnToggleBulkEdit" class="btn btn--ghost btn--xs">
-              📝 แก้ไขทีละหลายบรรทัด
-            </button>
+          <!-- Choices List Header -->
+          <div class="choices-head">
+            <span id="choicesSummaryText">ตัวเลือกทั้งหมด (6)</span>
+            <span>น้ำหนัก (Weight)</span>
+            <span>โอกาสออก (%)</span>
+            <span></span>
           </div>
-        </div>
 
-        <!-- Bulk Edit Drawer (Hidden unless clicked) -->
-        <div id="bulkEditPanel" class="drawer-box" hidden>
-          <label for="textareaBulk" class="drawer-label">
-            พิมพ์บรรทัดละ 1 คำตอบ (หากตั้งน้ำหนักให้พิมพ์ <code>ชื่อคำตอบ | 2</code>):
-          </label>
-          <textarea id="textareaBulk" class="input-textarea" rows="5"></textarea>
-          <div class="drawer-actions">
-            <button type="button" id="btnApplyBulk" class="btn btn--dark btn--xs">✓ อัปเดตวงล้อ</button>
-            <button type="button" id="btnCancelBulk" class="btn btn--ghost btn--xs">ยกเลิก</button>
-          </div>
+          <!-- Choices List (Large font, +/- weight steppers, smooth animations) -->
+          <div id="choicesListContainer" class="choices-list" role="list"></div>
         </div>
-
-        <!-- Clean Choices Table Header -->
-        <div class="choices-head" aria-hidden="true">
-          <span>ตัวเลือก</span>
-          <span>Weight</span>
-          <span>โอกาสออก (%)</span>
-          <span></span>
-        </div>
-
-        <!-- Choices List -->
-        <div id="choicesListContainer" class="choices-list" role="list"></div>
 
         <hr class="divider" />
 
-        <!-- Step 2: Simple Mode Selection -->
-        <div class="mode-section">
-          <div class="mode-section__top">
+        <!-- SECTION 2 (MIDDLE): Sampling Rules & Modes -->
+        <div class="section-block">
+          <div class="section-head">
             <div>
-              <span class="step-label">ขั้นตอนที่ 2</span>
-              <h2 class="section-title">เลือกกติกาการสุ่ม</h2>
+              <span class="step-badge">2. กติกาการสุ่ม</span>
+              <h2 class="section-title">เลือกรูปแบบความน่าจะเป็น</h2>
             </div>
-            <button type="button" id="btnResetStats" class="btn btn--ghost btn--xs">
+            <button type="button" id="btnResetStats" class="btn btn--glass btn--xs">
               ↺ รีเซ็ตสถิติรอบนี้
             </button>
           </div>
 
-          <!-- 3 Simple Mode Pills -->
           <div class="mode-pills" role="radiogroup" aria-label="โหมดการสุ่ม">
             <button type="button" id="btnModeIndependent" class="mode-pill is-active">
               🎲 ปกติ (ไม่สนรอบก่อน)
@@ -205,33 +182,70 @@
             </button>
           </div>
 
-          <!-- Hidden legacy hooks kept for JS compatibility -->
+          <!-- Hidden hooks for backward compatibility -->
           <button type="button" id="btnModeHistory" hidden></button>
           <div id="historySubModePanel" hidden></div>
 
-          <!-- Single-Line Clear Explanation -->
           <div class="mode-hint-box">
             <strong id="modeExplainerTitle">ปกติ (ไม่สนสถิติรอบก่อน):</strong>
             <span id="modeExplainerSummary">เหมือนโยนลูกเต๋าใหม่ทุกรอบ โอกาสออกคำนวณจาก Weight ตั้งต้นล้วนๆ</span>
             <code id="modeExplainerFormula" class="formula-pill">W = Weight</code>
           </div>
 
-          <!-- Eliminate Winner Checkbox -->
           <label class="checkbox-row" for="chkEliminateWinner">
             <input type="checkbox" id="chkEliminateWinner" />
             <span>ตัดคำตอบที่ออกแล้วพักไว้ชั่วคราว (ไม่ให้ซ้ำเลยจนกว่าจะกดรีเซ็ต)</span>
           </label>
         </div>
 
-        <!-- Collapsible Advanced Tools (Keeps main screen ultra-clean!) -->
+        <hr class="divider" />
+
+        <!-- SECTION 3 (BOTTOM): Save & Load Presets -->
+        <div class="section-block">
+          <div class="section-head">
+            <div>
+              <span class="step-badge">3. บันทึกชุดคำตอบ (Presets)</span>
+              <h2 class="section-title">ตั้งชื่อและบันทึกไว้ใช้ครั้งหน้า</h2>
+            </div>
+            <span id="storageStatusTag" class="status-tag">Auto-saved</span>
+          </div>
+
+          <!-- Save / Rename Preset Directly -->
+          <form id="presetNameForm" class="save-preset-row">
+            <input
+              type="text"
+              id="inputPresetName"
+              class="input-text save-preset-row__input"
+              maxlength="60"
+              placeholder="ตั้งชื่อชุดคำตอบนี้..."
+              required
+            />
+            <button type="submit" id="btnRenamePreset" class="btn btn--gold-outline btn--sm">
+              💾 บันทึกชื่อชุดนี้
+            </button>
+            <button type="button" id="btnNewPreset" class="btn btn--glass btn--sm" title="บันทึกแยกเป็นชุดคำตอบอันใหม่">
+              + บันทึกเป็นชุดใหม่
+            </button>
+            <button type="button" id="btnCancelPresetName" hidden></button>
+          </form>
+
+          <!-- Switch between saved presets -->
+          <div class="preset-load-row">
+            <label for="presetSelect" class="preset-load-label">สลับชุดคำตอบที่บันทึกไว้:</label>
+            <select id="presetSelect" class="input-select preset-load-select"></select>
+            <button type="button" id="btnDeletePreset" class="btn btn--glass btn--xs text-danger" title="ลบชุดคำตอบนี้">
+              ลบชุดนี้
+            </button>
+          </div>
+        </div>
+
+        <!-- Collapsible Advanced Tools (History + 100,000-Spin χ² Audit + JSON Export/Import) -->
         <details class="advanced-details">
           <summary class="advanced-summary">
-            <span>⚙️ เครื่องมือเพิ่มเติม (ประวัติการหมุน · พิสูจน์ความแฟร์ 100,000 ครั้ง · ไฟล์ JSON)</span>
-            <span id="storageStatusTag" class="status-tag">Auto-saved</span>
+            <span>🔬 ประวัติการหมุน · พิสูจน์ความแฟร์ 100,000 ครั้ง ($\chi^2$) · ไฟล์ JSON</span>
           </summary>
 
           <div class="advanced-body">
-            <!-- History Log -->
             <div class="advanced-block">
               <div class="advanced-block__head">
                 <strong>ประวัติการหมุนล่าสุด (<span id="historyCountText">0</span> ครั้ง)</strong>
@@ -239,15 +253,14 @@
               <div id="historyListContainer" class="history-list"></div>
             </div>
 
-            <!-- Chi-Squared Statistical Proof -->
             <div class="advanced-block">
               <div class="advanced-block__head">
                 <div>
                   <strong>พิสูจน์ความแฟร์ทางสถิติ (Pearson's $\chi^2$ Test)</strong>
-                  <p class="muted-text">จำลองการหมุนด้วย CSPRNG 100,000 ครั้งเพื่อตรวจว่าโอกาสออกตรงตามทฤษฎี</p>
+                  <p class="muted-text">จำลองการสุ่มด้วย CSPRNG 100,000 ครั้งเพื่อตรวจวัดความแม่นยำ</p>
                 </div>
-                <button type="button" id="btnRunAudit" class="btn btn--outline btn--xs">
-                  🔬 ทดสอบหมุน 100,000 ครั้ง
+                <button type="button" id="btnRunAudit" class="btn btn--gold-outline btn--xs">
+                  🔬 รันทดสอบ 100,000 ครั้ง
                 </button>
               </div>
 
@@ -262,13 +275,12 @@
               </div>
             </div>
 
-            <!-- JSON Import / Export -->
             <div class="advanced-block advanced-block--row">
               <span class="muted-text">สำรองหรือย้ายชุดคำตอบด้วยไฟล์:</span>
               <div class="preset-io-btns">
-                <button type="button" id="btnExportJson" class="btn btn--outline btn--xs">⬇ ดาวน์โหลด .JSON</button>
-                <label for="inputImportJson" class="btn btn--outline btn--xs file-label">
-                  ⬆ นำเข้าไฟล์ .JSON
+                <button type="button" id="btnExportJson" class="btn btn--glass btn--xs">⬇ Export .JSON</button>
+                <label for="inputImportJson" class="btn btn--glass btn--xs file-label">
+                  ⬆ Import .JSON
                   <input type="file" id="inputImportJson" accept=".json,application/json" hidden />
                 </label>
               </div>

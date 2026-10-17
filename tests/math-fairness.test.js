@@ -8,6 +8,16 @@ import {
 } from '../js/math/csprng.js';
 import { runFairnessAudit, chiSquarePValue } from '../js/math/chi-square.js';
 import { assignCycleSafeColors, getSliceAtPointer } from '../js/wheel/renderer.js';
+import { physicalSpinCurve } from '../js/wheel/animator.js';
+
+test('physicalSpinCurve models realistic overshoot and rolls back under gravity to exact 1.0 at tau=1', () => {
+  assert.equal(physicalSpinCurve(0, 0.01), 0);
+  // At peakTau = 0.89, it reaches 1 + overshootRatio
+  const atPeak = physicalSpinCurve(0.89, 0.01);
+  assert.ok(Math.abs(atPeak - 1.01) < 1e-9, `Expected 1.01 at peak, got ${atPeak}`);
+  // At tau = 1.0, gravity rollback settles strictly at 1.0 (preserving exact CSPRNG angle)
+  assert.equal(physicalSpinCurve(1, 0.01), 1);
+});
 
 test('randomIntUnbiased returns values strictly within [0, bound - 1] and handles bound = 1', () => {
   assert.equal(randomIntUnbiased(1), 0);
