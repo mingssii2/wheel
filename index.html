@@ -7,246 +7,131 @@
     http-equiv="Content-Security-Policy"
     content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none';"
   />
-  <title>FAIR WHEEL — วงล้อสุ่มคำตอบตามหลักคณิตศาสตร์ (CSPRNG + Lemire Unbiased)</title>
+  <title>FAIR WHEEL — วงล้อสุ่มคำตอบมินิมอล แฟร์ตามหลักคณิตศาสตร์</title>
   <meta
     name="description"
-    content="วงล้อสุ่มคำตอบที่แฟร์ที่สุดตามหลักคณิตศาสตร์ ใช้ Web Crypto CSPRNG + Exact Rejection Sampling แสดง Weight และ Probability จริงรายตัวเลือก พร้อมระบบพิสูจน์ Chi-Squared 100,000 ครั้ง"
+    content="วงล้อสุ่มคำตอบสไตล์มินิมอล อ่านง่าย ใช้ Web Crypto CSPRNG + Exact Rejection Sampling แสดง Weight และโอกาสออกจริงรายตัวเลือก"
   />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
-    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Noto+Sans+Thai:wght@400;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap"
+    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Noto+Sans+Thai:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap"
     rel="stylesheet"
   />
   <link rel="stylesheet" href="./css/styles.css" />
 </head>
 <body>
-  <!-- Screen-reader live announcement region -->
   <div id="srAnnouncement" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 
+  <!-- Minimal Clean Header -->
   <header class="top-bar">
     <div class="brand-group">
-      <span class="brand-badge">CSPRNG · ZERO BIAS</span>
-      <h1 class="brand-title">FAIR WHEEL</h1>
-      <span class="brand-subtitle">Provably Fair Cryptographic Decision Wheel</span>
+      <h1 class="brand-title">Fair Wheel</h1>
+      <span class="brand-badge">CSPRNG 100% Fair</span>
     </div>
 
     <div class="top-actions">
-      <button type="button" id="btnSoundToggle" class="swiss-btn swiss-btn--sm" aria-pressed="true" title="เปิด/ปิดเสียงกลไกวงล้อ">
+      <button type="button" id="btnSoundToggle" class="btn btn--ghost btn--sm" aria-pressed="true">
         <span id="soundIcon">🔊</span>
-        <span id="soundLabel">เสียง: เปิด</span>
+        <span id="soundLabel">เสียง</span>
       </button>
-      <button type="button" id="btnShareUrl" class="swiss-btn swiss-btn--sm swiss-btn--accent" title="คัดลอกลิงก์แชร์ชุดคำตอบนี้">
+      <button type="button" id="btnShareUrl" class="btn btn--outline btn--sm">
         🔗 แชร์ลิงก์ชุดคำตอบ
       </button>
     </div>
   </header>
 
-  <!-- Toast notification bar -->
   <div id="toastBanner" class="toast-banner" role="status" aria-live="polite" hidden></div>
 
   <main class="workspace-grid">
-    <!-- LEFT COLUMN: Orthographic 3D Wheel Stage -->
-    <section class="wheel-stage-card" aria-label="วงล้อสุ่มคำตอบ">
-      <!-- Live Pointer Telemetry Readout -->
-      <div class="pointer-hud">
-        <div class="pointer-hud__indicator">
-          <span class="pointer-hud__dot"></span>
-          <span class="pointer-hud__caption">เข็มชี้ปัจจุบัน (12 นาฬิกา)</span>
-        </div>
-        <div class="pointer-hud__value" id="hudCurrentLabel">—</div>
-        <div class="pointer-hud__meta">
-          <span id="hudCurrentProb" class="mono-pill">P: 0.00%</span>
-          <span id="hudCurrentWeight" class="mono-pill">W: 1</span>
-        </div>
+    <!-- LEFT HERO: Stationary Wheel + Prominent SPIN CTA + Speed Selector -->
+    <section class="wheel-card" aria-label="วงล้อสุ่มคำตอบ">
+      <!-- Subtle top pointer indicator -->
+      <div class="pointer-pill">
+        <span class="pointer-pill__label">เข็มชี้ที่:</span>
+        <strong id="hudCurrentLabel" class="pointer-pill__value">—</strong>
+        <span id="hudCurrentProb" class="pointer-pill__prob">0.0%</span>
+        <span id="hudCurrentWeight" class="sr-only">W: 1</span>
       </div>
 
-      <!-- Interactive 3D Tilt & Drag-to-Spin Wheel Container -->
+      <!-- Stationary Wheel Viewport -->
       <div class="wheel-viewport" id="wheelViewport">
         <canvas
           id="wheelCanvas"
-          width="540"
-          height="540"
-          role="img"
-          aria-label="วงล้อสุ่มคำตอบ คลิกหรือกดปุ่ม Space เพื่อหมุน หรือใช้เมาส์ปัดเพื่อหมุน"
+          width="520"
+          height="520"
+          role="button"
+          aria-label="กดเพื่อหมุนวงล้อ หรือกดปุ่ม Spacebar"
           tabindex="0"
         ></canvas>
       </div>
 
-      <!-- Primary Spin Controls -->
-      <div class="wheel-controls-bar">
-        <button type="button" id="btnPrimarySpin" class="swiss-btn swiss-btn--primary swiss-btn--lg">
-          🎯 หมุนวงล้อ (SPIN)
-        </button>
-        <button type="button" id="btnResetStats" class="swiss-btn swiss-btn--secondary" title="ล้างจำนวนครั้งที่ชนะและคืนค่าตัวเลือกที่ถูกตัดออก">
-          ↺ รีเซ็ตสถิติรอบนี้
-        </button>
-      </div>
-
-      <p class="wheel-hint">
-        💡 กดปุ่ม <strong>SPIN</strong>, กดปุ่ม <kbd>Spacebar</kbd>, หรือ <strong>ใช้นิ้ว/เมาส์ปัดที่วงล้อ</strong> เพื่อหมุนได้เลย (กดซ้ำขณะหมุนเพื่อข้ามไปดูผลทันที)
-      </p>
-
-      <!-- Winner Banner (inline spotlight card when spin finishes) -->
+      <!-- Winner Spotlight Result Card (Appears clearly when spin completes) -->
       <div id="winnerBanner" class="winner-banner" hidden>
-        <div class="winner-banner__header">
-          <span class="winner-banner__tag">🏆 ผลลัพธ์จากการสุ่มด้วย CSPRNG</span>
-          <button type="button" id="btnCloseWinner" class="icon-close-btn" aria-label="ปิดประกาศผล">✕</button>
+        <div class="winner-banner__top">
+          <span class="winner-banner__tag">🎉 คำตอบที่สุ่มได้</span>
+          <button type="button" id="btnCloseWinner" class="icon-btn" aria-label="ปิด">✕</button>
         </div>
         <div class="winner-banner__name" id="winnerNameText">—</div>
-        <div class="winner-banner__stats" id="winnerStatsText">โอกาสออกในรอบนี้: 0.00%</div>
+        <div class="winner-banner__stats" id="winnerStatsText">โอกาสออก 0.00%</div>
+      </div>
+
+      <!-- Primary Action Zone: Speed Selector + Big Hero SPIN Button -->
+      <div class="spin-action-zone">
+        <div class="speed-selector" role="group" aria-label="ความเร็วการหมุน">
+          <span class="speed-selector__label">ความเร็ว:</span>
+          <button type="button" class="speed-pill" data-speed="fast">⚡ เร็ว</button>
+          <button type="button" class="speed-pill is-active" data-speed="normal">🎯 ปกติ</button>
+          <button type="button" class="speed-pill" data-speed="slow">🐢 ลุ้นนาน</button>
+        </div>
+
+        <button type="button" id="btnPrimarySpin" class="btn btn--primary btn--hero">
+          หมุนวงล้อ (SPIN)
+        </button>
       </div>
     </section>
 
-    <!-- RIGHT COLUMN: Preset, Mode, Choices & Mathematical Proof Workbench -->
-    <section class="workbench-column" aria-label="แผงตั้งค่าตัวเลือกและโหมดคณิตศาสตร์">
-      <!-- BLOCK 1: Preset Manager -->
-      <div class="editorial-card">
-        <div class="card-header">
-          <h2 class="card-title">1. ชุดคำตอบที่บันทึกไว้ (Presets)</h2>
-          <span class="card-tag" id="storageStatusTag">Saved in Browser</span>
+    <!-- RIGHT PANEL: Essential Choices & Mode Only -->
+    <section class="panel-column" aria-label="ตั้งค่าคำตอบ">
+      <div class="panel-card">
+        <!-- Step 1 Header + Preset Selector -->
+        <div class="section-head">
+          <div>
+            <span class="step-label">ขั้นตอนที่ 1</span>
+            <h2 class="section-title">ใส่คำตอบและน้ำหนัก (Weight)</h2>
+          </div>
+
+          <div class="preset-bar">
+            <label for="presetSelect" class="sr-only">เลือกชุดคำตอบ</label>
+            <select id="presetSelect" class="input-select"></select>
+            <button type="button" id="btnNewPreset" class="btn btn--ghost btn--xs" title="บันทึกเป็นชุดใหม่">+ ชุดใหม่</button>
+            <button type="button" id="btnRenamePreset" class="btn btn--ghost btn--xs" title="เปลี่ยนชื่อชุดนี้">เปลี่ยนชื่อ</button>
+            <button type="button" id="btnDeletePreset" class="btn btn--ghost btn--xs text-danger" title="ลบชุดนี้">ลบ</button>
+          </div>
         </div>
 
-        <div class="preset-row">
-          <label for="presetSelect" class="sr-only">เลือกชุดคำตอบ</label>
-          <select id="presetSelect" class="swiss-select"></select>
-          <button type="button" id="btnNewPreset" class="swiss-btn swiss-btn--sm" title="สร้างชุดคำตอบใหม่">+ สร้างชุดใหม่</button>
-          <button type="button" id="btnRenamePreset" class="swiss-btn swiss-btn--sm" title="เปลี่ยนชื่อชุดคำตอบปัจจุบัน">✎ เปลี่ยนชื่อ</button>
-          <button type="button" id="btnDeletePreset" class="swiss-btn swiss-btn--sm swiss-btn--danger" title="ลบชุดคำตอบนี้">ลบ</button>
-        </div>
-
-        <!-- Inline Preset Name Editor (hidden by default, zero window.prompt dependency) -->
-        <form id="presetNameForm" class="inline-name-form" hidden>
-          <input
-            type="text"
-            id="inputPresetName"
-            class="swiss-input"
-            maxlength="60"
-            placeholder="ตั้งชื่อชุดคำตอบ..."
-            required
-          />
-          <button type="submit" class="swiss-btn swiss-btn--sm swiss-btn--accent">บันทึกชื่อ</button>
-          <button type="button" id="btnCancelPresetName" class="swiss-btn swiss-btn--sm">ยกเลิก</button>
+        <!-- Inline Preset Name Form (Hidden by default) -->
+        <form id="presetNameForm" class="inline-form" hidden>
+          <input type="text" id="inputPresetName" class="input-text" maxlength="60" placeholder="ชื่อชุดคำตอบ..." required />
+          <button type="submit" class="btn btn--primary btn--xs">บันทึก</button>
+          <button type="button" id="btnCancelPresetName" class="btn btn--ghost btn--xs">ยกเลิก</button>
         </form>
 
-        <div class="preset-io-row">
-          <button type="button" id="btnExportJson" class="swiss-btn swiss-btn--xs">⬇ Export ไฟล์ .JSON</button>
-          <label for="inputImportJson" class="swiss-btn swiss-btn--xs file-label-btn">
-            ⬆ Import ไฟล์ .JSON
-            <input type="file" id="inputImportJson" accept=".json,application/json" hidden />
-          </label>
-        </div>
-      </div>
-
-      <!-- BLOCK 2: Probability Mode & History Rules -->
-      <div class="editorial-card">
-        <div class="card-header">
-          <h2 class="card-title">2. โหมดคณิตศาสตร์การสุ่ม (Probability Mode)</h2>
-          <span class="card-tag">Exact Integer Rejection</span>
-        </div>
-
-        <!-- Top-level toggle: Independent vs History-Aware -->
-        <div class="segmented-control" role="radiogroup" aria-label="เลือกการใช้สถิติรอบก่อน">
-          <button
-            type="button"
-            id="btnModeIndependent"
-            class="segmented-btn is-active"
-            data-mode-group="independent"
-            aria-pressed="true"
-          >
-            🎲 ไม่สนสถิติรอบก่อน (อิสระทุกรอบ)
-          </button>
-          <button
-            type="button"
-            id="btnModeHistory"
-            class="segmented-btn"
-            data-mode-group="history"
-            aria-pressed="false"
-          >
-            📊 ใช้สถิติรอบก่อนมาคำนวณด้วย
-          </button>
-        </div>
-
-        <!-- Sub-mode selector when History-Aware is active (Option A vs Option B) -->
-        <div id="historySubModePanel" class="submode-panel" hidden>
-          <div class="submode-label">เลือกรูปแบบการนำสถิติรอบก่อนมาคำนวณ:</div>
-          <div class="submode-grid">
-            <button
-              type="button"
-              id="btnSubModeBalance"
-              class="submode-card is-selected"
-              data-submode="balance"
-            >
-              <div class="submode-card__title">⚖️ A. เกลี่ยให้ทั่วถึง (ลดโอกาสซ้ำ)</div>
-              <div class="submode-card__desc">ข้อที่เพิ่งออกไปแล้ว โอกาสรอบหน้าจะลดลง เพื่อให้ข้อที่ยังไม่ออกได้ออกง่ายขึ้น</div>
-            </button>
-            <button
-              type="button"
-              id="btnSubModeMomentum"
-              class="submode-card"
-              data-submode="momentum"
-            >
-              <div class="submode-card__title">🔥 B. ยิ่งออกยิ่งมาแรง (เพิ่มโอกาสซ้ำ)</div>
-              <div class="submode-card__desc">ข้อที่เคยชนะจะได้แต้มต่อน้ำหนักเพิ่มขึ้นในรอบถัดไป ช่องจะขยายใหญ่ขึ้นเรื่อยๆ</div>
-            </button>
-          </div>
-        </div>
-
-        <!-- Plain-Language Mode Explanation Box -->
-        <div class="mode-explainer" id="modeExplainerBox">
-          <div class="mode-explainer__header">
-            <strong id="modeExplainerTitle">ไม่สนสถิติรอบก่อน (Independent / อิสระทุกรอบ)</strong>
-            <code id="modeExplainerFormula" class="formula-badge">W_eff = Weight ตั้งต้น</code>
-          </div>
-          <p id="modeExplainerSummary" class="mode-explainer__text">
-            เหมือนโยนลูกเต๋าใหม่ทุกรอบ รอบที่แล้วออกอะไรไม่มีผลกับรอบถัดไป โอกาสออกคำนวณจาก Weight ตั้งต้นล้วนๆ 100%
-          </p>
-        </div>
-
-        <!-- Eliminate Winner Switch -->
-        <label class="toggle-row" for="chkEliminateWinner">
-          <input type="checkbox" id="chkEliminateWinner" class="toggle-checkbox" />
-          <span class="toggle-switch"></span>
-          <span class="toggle-text">
-            <strong>ตัดคำตอบที่ออกแล้วพักไว้ชั่วคราว (Eliminate Winner)</strong>
-            <small>เมื่อสุ่มได้ข้อไหน จะซ่อนข้อนั้นออกจากวงล้อจนกว่าจะกดรีเซ็ต</small>
-          </span>
-        </label>
-      </div>
-
-      <!-- BLOCK 3: Choices, Weights & Live Probabilities -->
-      <div class="editorial-card">
-        <div class="card-header">
-          <div>
-            <h2 class="card-title">3. รายการคำตอบ · Weight · โอกาสออกจริง (%)</h2>
-            <p class="card-subtitle" id="choicesSummaryText">ทั้งหมด 6 ข้อที่เปิดใช้งาน</p>
-          </div>
-          <div class="card-header-actions">
-            <button type="button" id="btnRestoreEliminated" class="swiss-btn swiss-btn--xs" hidden>
-              คืนค่าข้อที่ถูกตัดออก
-            </button>
-            <button type="button" id="btnToggleBulkEdit" class="swiss-btn swiss-btn--xs">
-              📝 แก้ไขทีละหลายบรรทัด
-            </button>
-          </div>
-        </div>
-
-        <!-- Add single choice form -->
-        <form id="addChoiceForm" class="add-choice-form">
+        <!-- Add New Choice Row -->
+        <form id="addChoiceForm" class="add-form">
           <input
             type="text"
             id="inputNewLabel"
-            class="swiss-input add-choice-form__label"
-            placeholder="พิมพ์คำตอบใหม่ที่นี่..."
+            class="input-text add-form__label"
+            placeholder="พิมพ์คำตอบที่ต้องการเพิ่ม..."
             maxlength="120"
             required
           />
-          <div class="weight-input-group" title="น้ำหนักตั้งต้น (Weight)">
-            <span class="weight-prefix">W:</span>
+          <div class="weight-field" title="น้ำหนักตัวเลือก (ยิ่งมาก ช่องยิ่งกว้าง)">
+            <span>น้ำหนัก</span>
             <input
               type="number"
               id="inputNewWeight"
-              class="swiss-input add-choice-form__weight"
               value="1"
               min="0.1"
               max="10000"
@@ -254,87 +139,145 @@
               aria-label="น้ำหนักตั้งต้น"
             />
           </div>
-          <button type="submit" class="swiss-btn swiss-btn--accent">+ เพิ่ม</button>
+          <button type="submit" class="btn btn--dark">+ เพิ่มคำตอบ</button>
         </form>
 
-        <!-- Optional Bulk Textarea Editor -->
-        <div id="bulkEditPanel" class="bulk-edit-panel" hidden>
-          <label for="textareaBulk" class="bulk-edit-label">
-            พิมพ์บรรทัดละ 1 คำตอบ (หากต้องการกำหนด Weight ให้พิมพ์ <code>ชื่อคำตอบ | 2</code>):
-          </label>
-          <textarea id="textareaBulk" class="swiss-textarea" rows="6"></textarea>
-          <div class="bulk-edit-actions">
-            <button type="button" id="btnApplyBulk" class="swiss-btn swiss-btn--sm swiss-btn--accent">
-              ✓ นำไปใช้กับวงล้อ
+        <!-- Choices List Toolbar -->
+        <div class="list-toolbar">
+          <span id="choicesSummaryText" class="muted-text">ทั้งหมด 6 ตัวเลือก</span>
+          <div class="list-toolbar__actions">
+            <button type="button" id="btnRestoreEliminated" class="btn btn--outline btn--xs" hidden>
+              ↺ คืนค่าข้อที่ถูกพัก
             </button>
-            <button type="button" id="btnCancelBulk" class="swiss-btn swiss-btn--sm">ยกเลิก</button>
+            <button type="button" id="btnToggleBulkEdit" class="btn btn--ghost btn--xs">
+              📝 แก้ไขทีละหลายบรรทัด
+            </button>
           </div>
         </div>
 
-        <!-- Column Headers for Choices List -->
-        <div class="choices-table-head" aria-hidden="true">
-          <span>สี / คำตอบ</span>
-          <span>Weight ตั้งต้น</span>
-          <span>สถิติ & โอกาสออกรอบนี้</span>
-          <span>จัดการ</span>
+        <!-- Bulk Edit Drawer (Hidden unless clicked) -->
+        <div id="bulkEditPanel" class="drawer-box" hidden>
+          <label for="textareaBulk" class="drawer-label">
+            พิมพ์บรรทัดละ 1 คำตอบ (หากตั้งน้ำหนักให้พิมพ์ <code>ชื่อคำตอบ | 2</code>):
+          </label>
+          <textarea id="textareaBulk" class="input-textarea" rows="5"></textarea>
+          <div class="drawer-actions">
+            <button type="button" id="btnApplyBulk" class="btn btn--dark btn--xs">✓ อัปเดตวงล้อ</button>
+            <button type="button" id="btnCancelBulk" class="btn btn--ghost btn--xs">ยกเลิก</button>
+          </div>
         </div>
 
-        <!-- Dynamic Choices List -->
+        <!-- Clean Choices Table Header -->
+        <div class="choices-head" aria-hidden="true">
+          <span>ตัวเลือก</span>
+          <span>Weight</span>
+          <span>โอกาสออก (%)</span>
+          <span></span>
+        </div>
+
+        <!-- Choices List -->
         <div id="choicesListContainer" class="choices-list" role="list"></div>
-      </div>
 
-      <!-- BLOCK 4: Chi-Squared (χ²) Fairness Audit & History Log -->
-      <div class="editorial-card">
-        <div class="card-header">
-          <div>
-            <h2 class="card-title">4. พิสูจน์ความแฟร์ทางสถิติ ($\chi^2$ Proof) & ประวัติการสุ่ม</h2>
-            <p class="card-subtitle">จำลองการสุ่มด้วย CSPRNG จริง 100,000 ครั้ง เพื่อตรวจวัดความเบี่ยงเบนทางคณิตศาสตร์</p>
-          </div>
-          <button type="button" id="btnRunAudit" class="swiss-btn swiss-btn--sm swiss-btn--accent">
-            🔬 รันทดสอบ 100,000 ครั้ง
-          </button>
-        </div>
+        <hr class="divider" />
 
-        <!-- Chi-Squared Audit Output -->
-        <div id="auditResultPanel" class="audit-panel" hidden>
-          <div class="audit-metrics-grid">
-            <div class="audit-metric">
-              <span class="audit-metric__label">ผลลัพธ์ทางสถิติ</span>
-              <strong id="auditStatusBadge" class="audit-metric__value audit-pass">PASS (แฟร์ตามทฤษฎี)</strong>
+        <!-- Step 2: Simple Mode Selection -->
+        <div class="mode-section">
+          <div class="mode-section__top">
+            <div>
+              <span class="step-label">ขั้นตอนที่ 2</span>
+              <h2 class="section-title">เลือกกติกาการสุ่ม</h2>
             </div>
-            <div class="audit-metric">
-              <span class="audit-metric__label">ค่าสถิติ Chi-Square ($\chi^2$)</span>
-              <strong id="auditChiSquareVal" class="audit-metric__value mono">0.00</strong>
-            </div>
-            <div class="audit-metric">
-              <span class="audit-metric__label">$p$-value ($df = N-1$)</span>
-              <strong id="auditPValueVal" class="audit-metric__value mono">0.5000</strong>
-            </div>
-            <div class="audit-metric">
-              <span class="audit-metric__label">ความคลาดเคลื่อนสูงสุด / เวลาที่ใช้</span>
-              <strong id="auditErrorTimeVal" class="audit-metric__value mono">0.12% · 18ms</strong>
-            </div>
+            <button type="button" id="btnResetStats" class="btn btn--ghost btn--xs">
+              ↺ รีเซ็ตสถิติรอบนี้
+            </button>
           </div>
 
-          <div id="auditBarsContainer" class="audit-bars"></div>
+          <!-- 3 Simple Mode Pills -->
+          <div class="mode-pills" role="radiogroup" aria-label="โหมดการสุ่ม">
+            <button type="button" id="btnModeIndependent" class="mode-pill is-active">
+              🎲 ปกติ (ไม่สนรอบก่อน)
+            </button>
+            <button type="button" id="btnSubModeBalance" class="mode-pill">
+              ⚖️ เกลี่ยให้ทั่วถึง (ลดโอกาสซ้ำ)
+            </button>
+            <button type="button" id="btnSubModeMomentum" class="mode-pill">
+              🔥 ยิ่งออกยิ่งมาแรง (เพิ่มโอกาสซ้ำ)
+            </button>
+          </div>
+
+          <!-- Hidden legacy hooks kept for JS compatibility -->
+          <button type="button" id="btnModeHistory" hidden></button>
+          <div id="historySubModePanel" hidden></div>
+
+          <!-- Single-Line Clear Explanation -->
+          <div class="mode-hint-box">
+            <strong id="modeExplainerTitle">ปกติ (ไม่สนสถิติรอบก่อน):</strong>
+            <span id="modeExplainerSummary">เหมือนโยนลูกเต๋าใหม่ทุกรอบ โอกาสออกคำนวณจาก Weight ตั้งต้นล้วนๆ</span>
+            <code id="modeExplainerFormula" class="formula-pill">W = Weight</code>
+          </div>
+
+          <!-- Eliminate Winner Checkbox -->
+          <label class="checkbox-row" for="chkEliminateWinner">
+            <input type="checkbox" id="chkEliminateWinner" />
+            <span>ตัดคำตอบที่ออกแล้วพักไว้ชั่วคราว (ไม่ให้ซ้ำเลยจนกว่าจะกดรีเซ็ต)</span>
+          </label>
         </div>
 
-        <!-- Session Spin History Log -->
-        <div class="history-section">
-          <div class="history-header">
-            <h3 class="history-title">ประวัติผลการหมุนล่าสุด (<span id="historyCountText">0</span> ครั้ง)</h3>
+        <!-- Collapsible Advanced Tools (Keeps main screen ultra-clean!) -->
+        <details class="advanced-details">
+          <summary class="advanced-summary">
+            <span>⚙️ เครื่องมือเพิ่มเติม (ประวัติการหมุน · พิสูจน์ความแฟร์ 100,000 ครั้ง · ไฟล์ JSON)</span>
+            <span id="storageStatusTag" class="status-tag">Auto-saved</span>
+          </summary>
+
+          <div class="advanced-body">
+            <!-- History Log -->
+            <div class="advanced-block">
+              <div class="advanced-block__head">
+                <strong>ประวัติการหมุนล่าสุด (<span id="historyCountText">0</span> ครั้ง)</strong>
+              </div>
+              <div id="historyListContainer" class="history-list"></div>
+            </div>
+
+            <!-- Chi-Squared Statistical Proof -->
+            <div class="advanced-block">
+              <div class="advanced-block__head">
+                <div>
+                  <strong>พิสูจน์ความแฟร์ทางสถิติ (Pearson's $\chi^2$ Test)</strong>
+                  <p class="muted-text">จำลองการหมุนด้วย CSPRNG 100,000 ครั้งเพื่อตรวจว่าโอกาสออกตรงตามทฤษฎี</p>
+                </div>
+                <button type="button" id="btnRunAudit" class="btn btn--outline btn--xs">
+                  🔬 ทดสอบหมุน 100,000 ครั้ง
+                </button>
+              </div>
+
+              <div id="auditResultPanel" class="audit-panel" hidden>
+                <div class="audit-metrics">
+                  <div>สถานะ: <strong id="auditStatusBadge" class="text-success">PASS</strong></div>
+                  <div>$\chi^2$: <strong id="auditChiSquareVal" class="mono">0.00</strong></div>
+                  <div>$p$-value: <strong id="auditPValueVal" class="mono">0.50</strong></div>
+                  <div>คลาดเคลื่อนสูงสุด: <strong id="auditErrorTimeVal" class="mono">0.1%</strong></div>
+                </div>
+                <div id="auditBarsContainer" class="audit-bars"></div>
+              </div>
+            </div>
+
+            <!-- JSON Import / Export -->
+            <div class="advanced-block advanced-block--row">
+              <span class="muted-text">สำรองหรือย้ายชุดคำตอบด้วยไฟล์:</span>
+              <div class="preset-io-btns">
+                <button type="button" id="btnExportJson" class="btn btn--outline btn--xs">⬇ ดาวน์โหลด .JSON</button>
+                <label for="inputImportJson" class="btn btn--outline btn--xs file-label">
+                  ⬆ นำเข้าไฟล์ .JSON
+                  <input type="file" id="inputImportJson" accept=".json,application/json" hidden />
+                </label>
+              </div>
+            </div>
           </div>
-          <div id="historyListContainer" class="history-list"></div>
-        </div>
+        </details>
       </div>
     </section>
   </main>
-
-  <footer class="app-footer">
-    <span>
-      <strong>Mathematical Guarantees:</strong> W3C <code>crypto.getRandomValues()</code> (OS CSPRNG) · Lemire Unbiased Rejection Sampling ($\text{TVD} = 0$) · Outcome-First Time-Parametric Animation
-    </span>
-  </footer>
 
   <script type="module" src="./js/main.js"></script>
 </body>

@@ -1,7 +1,9 @@
 /**
- * Main Application Entrypoint — FAIR WHEEL
- * Orchestrates CSPRNG math engine, OffscreenCanvas 3D renderer, Web Audio synthesizer,
- * Preset serialization/URL sharing, and strict XSS-safe DOM updates.
+ * Main Application Entrypoint — FAIR WHEEL (Minimalist High-Legibility Edition)
+ * Features:
+ * - Stationary, rock-steady wheel (no hover wobble) with prominent center SPIN button
+ * - Configurable Spin Speed (Fast 1.8s / Normal 3.8s / Slow 6.5s)
+ * - Clean progressive disclosure UX with CSPRNG + Lemire exact fairness
  */
 
 import {
@@ -27,7 +29,15 @@ import { createWheelAnimator } from './wheel/animator.js';
 const store = createStore();
 const sound = createSoundEngine();
 
-// DOM References
+const SPIN_SPEED_CONFIG = {
+  fast: { duration: 1800, minSpins: 4, maxSpins: 5 },
+  normal: { duration: 3800, minSpins: 6, maxSpins: 8 },
+  slow: { duration: 6500, minSpins: 9, maxSpins: 12 }
+};
+
+let selectedSpeedKey = 'normal';
+
+// DOM Elements
 const srAnnouncement = document.getElementById('srAnnouncement');
 const toastBanner = document.getElementById('toastBanner');
 const btnSoundToggle = document.getElementById('btnSoundToggle');
@@ -43,6 +53,7 @@ const wheelViewport = document.getElementById('wheelViewport');
 const wheelCanvas = document.getElementById('wheelCanvas');
 const btnPrimarySpin = document.getElementById('btnPrimarySpin');
 const btnResetStats = document.getElementById('btnResetStats');
+const speedButtons = document.querySelectorAll('.speed-pill');
 
 const winnerBanner = document.getElementById('winnerBanner');
 const winnerNameText = document.getElementById('winnerNameText');
@@ -61,8 +72,6 @@ const btnExportJson = document.getElementById('btnExportJson');
 const inputImportJson = document.getElementById('inputImportJson');
 
 const btnModeIndependent = document.getElementById('btnModeIndependent');
-const btnModeHistory = document.getElementById('btnModeHistory');
-const historySubModePanel = document.getElementById('historySubModePanel');
 const btnSubModeBalance = document.getElementById('btnSubModeBalance');
 const btnSubModeMomentum = document.getElementById('btnSubModeMomentum');
 const modeExplainerTitle = document.getElementById('modeExplainerTitle');
@@ -93,10 +102,9 @@ const auditBarsContainer = document.getElementById('auditBarsContainer');
 const historyCountText = document.getElementById('historyCountText');
 const historyListContainer = document.getElementById('historyListContainer');
 
-// Local UI state
+// Local state
 let currentDistribution = { activeItems: [], prefixSums: [], totalEffectiveWeight: 0 };
-let lastHistorySubMode = 'balance';
-let nameFormMode = 'rename'; // 'rename' | 'new'
+let nameFormMode = 'rename';
 let highlightedWinnerId = null;
 let toastTimer = null;
 
@@ -111,20 +119,17 @@ const animator = createWheelAnimator({
     sound.playTick(normalizedSpeed);
   },
   onComplete(resultPayload) {
-    btnPrimarySpin.textContent = '🎯 หมุนวงล้อ (SPIN)';
+    btnPrimarySpin.textContent = 'หมุนวงล้อ (SPIN)';
     btnPrimarySpin.classList.remove('is-skip-mode');
 
     highlightedWinnerId = resultPayload.item.id;
     sound.playWinFanfare();
 
-    // Record win in state store (updates win count & optional elimination)
     store.recordWin(resultPayload.item.id, resultPayload.probability);
 
-    // Show Winner Banner
     winnerNameText.textContent = resultPayload.item.label;
     const pct = (resultPayload.probability * 100).toFixed(2);
-    const modeTitle = MODE_DESCRIPTIONS[resultPayload.mode]?.title || resultPayload.mode;
-    winnerStatsText.textContent = `โอกาสออกในรอบที่หมุน: ${pct}% (Weight ตั้งต้น: ${resultPayload.baseWeight} · โหมด: ${modeTitle})`;
+    winnerStatsText.textContent = `โอกาสออกในรอบที่หมุน: ${pct}% (Weight: ${resultPayload.baseWeight})`;
     winnerBanner.hidden = false;
 
     announceScreenReader(`ผลการสุ่มได้แก่ ${resultPayload.item.label} โอกาสออก ${pct} เปอร์เซ็นต์`);
@@ -137,7 +142,7 @@ function showToast(message) {
   toastBanner.hidden = false;
   toastTimer = setTimeout(() => {
     toastBanner.hidden = true;
-  }, 3600);
+  }, 3200);
 }
 
 function announceScreenReader(text) {
@@ -149,18 +154,18 @@ function announceScreenReader(text) {
 
 function updatePointerHud(slice) {
   if (!slice) {
-    hudCurrentLabel.textContent = 'ไม่มีตัวเลือกที่เปิดใช้งาน';
-    hudCurrentProb.textContent = 'P: 0.00%';
+    hudCurrentLabel.textContent = 'ไม่มีตัวเลือก';
+    hudCurrentProb.textContent = '0%';
     hudCurrentWeight.textContent = 'W: —';
     return;
   }
   hudCurrentLabel.textContent = slice.item.label;
-  hudCurrentProb.textContent = `P: ${(slice.probability * 100).toFixed(2)}%`;
+  hudCurrentProb.textContent = `${(slice.probability * 100).toFixed(1)}%`;
   hudCurrentWeight.textContent = `W: ${slice.baseWeight}`;
 }
 
 /**
- * Triggers a cryptographically fair spin or skips to result if already spinning.
+ * Triggers a cryptographically fair spin using the selected speed, or skips to result if already spinning.
  */
 function triggerSpinOrSkip() {
   sound.unlock();
@@ -173,20 +178,25 @@ function triggerSpinOrSkip() {
   const state = store.getState();
   const dist = computeDistribution(state.currentPreset.items, state.currentPreset.mode);
   if (dist.activeItems.length === 0) {
-    showToast('กรุณาเพิ่มหรือเปิดใช้งานคำตอบอย่างน้อย 1 ข้อก่อนหมุนวงล้อ');
+    showToast('กรุณาเพิ่มหรือเปิดใช้งานคำตอบอย่างน้อย 1 ข้อก่อนหมุน');
     return;
   }
 
   highlightedWinnerId = null;
   winnerBanner.hidden = true;
 
-  // 1. Outcome-First CSPRNG Selection
   const sample = sampleWinnerFromDistribution(dist, false);
   if (!sample) return;
 
   const { winnerEntry } = sample;
+  const speedCfg = SPIN_SPEED_CONFIG[selectedSpeedKey] || SPIN_SPEED_CONFIG.normal;
   const currentRotation = animator.getRotation();
-  const { targetRotation } = computeTargetRotation(currentRotation, winnerEntry, 6, 9);
+  const { targetRotation } = computeTargetRotation(
+    currentRotation,
+    winnerEntry,
+    speedCfg.minSpins,
+    speedCfg.maxSpins
+  );
 
   const reducedMotion =
     typeof window.matchMedia === 'function' &&
@@ -198,7 +208,7 @@ function triggerSpinOrSkip() {
   renderer.setDistribution(dist, null);
   animator.startSpin({
     targetRotation,
-    duration: 4500,
+    duration: speedCfg.duration,
     distribution: dist,
     reducedMotion,
     resultPayload: {
@@ -210,59 +220,47 @@ function triggerSpinOrSkip() {
   });
 }
 
-/**
- * Renders the Preset selector dropdown safely.
- */
+// Speed selector buttons
+speedButtons.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const speed = btn.getAttribute('data-speed');
+    if (speed && SPIN_SPEED_CONFIG[speed]) {
+      selectedSpeedKey = speed;
+      speedButtons.forEach((b) => b.classList.toggle('is-active', b === btn));
+    }
+  });
+});
+
 function renderPresetsDropdown(state) {
   presetSelect.replaceChildren();
   for (const preset of state.presets) {
     const opt = document.createElement('option');
     opt.value = preset.id;
-    opt.textContent = `${preset.name} (${preset.items.length} ข้อ)`;
+    opt.textContent = `${preset.name} (${preset.items.length})`;
     if (preset.id === state.currentPreset.id) {
       opt.selected = true;
     }
     presetSelect.appendChild(opt);
   }
   btnDeletePreset.disabled = state.presets.length <= 1;
-  storageStatusTag.textContent = state.storageAvailable
-    ? 'บันทึกอัตโนมัติใน Browser'
-    : 'Memory Mode (Storage ปิดอยู่)';
+  storageStatusTag.textContent = state.storageAvailable ? 'Auto-saved' : 'Memory mode';
 }
 
-/**
- * Updates the Probability Mode segmented buttons & plain-language explanation card.
- */
 function renderModeControls(state) {
   const mode = state.currentPreset.mode;
-  if (mode === 'balance' || mode === 'momentum') {
-    lastHistorySubMode = mode;
-  }
 
-  const isIndependent = mode === 'independent';
-  btnModeIndependent.classList.toggle('is-active', isIndependent);
-  btnModeIndependent.setAttribute('aria-pressed', String(isIndependent));
-
-  btnModeHistory.classList.toggle('is-active', !isIndependent);
-  btnModeHistory.setAttribute('aria-pressed', String(!isIndependent));
-
-  historySubModePanel.hidden = isIndependent;
-
-  btnSubModeBalance.classList.toggle('is-selected', mode === 'balance');
-  btnSubModeMomentum.classList.toggle('is-selected', mode === 'momentum');
+  btnModeIndependent.classList.toggle('is-active', mode === 'independent');
+  btnSubModeBalance.classList.toggle('is-active', mode === 'balance');
+  btnSubModeMomentum.classList.toggle('is-active', mode === 'momentum');
 
   const desc = MODE_DESCRIPTIONS[mode] || MODE_DESCRIPTIONS.independent;
-  modeExplainerTitle.textContent = desc.title;
-  modeExplainerFormula.textContent = desc.formulaText;
+  modeExplainerTitle.textContent = `${desc.badge}:`;
   modeExplainerSummary.textContent = desc.summary;
+  modeExplainerFormula.textContent = desc.formulaText;
 
   chkEliminateWinner.checked = Boolean(state.currentPreset.eliminateWinner);
 }
 
-/**
- * Renders the per-choice table with Color Swatch, Label input, Weight input,
- * Session Win Count badge, and Exact Probability (%) bar.
- */
 function renderChoicesList(state, dist) {
   choicesListContainer.replaceChildren();
 
@@ -283,14 +281,14 @@ function renderChoicesList(state, dist) {
 
   choicesSummaryText.textContent =
     eliminatedCount > 0
-      ? `เปิดใช้งาน ${dist.activeItems.length} ข้อ (พักไว้ชั่วคราว ${eliminatedCount} ข้อ)`
-      : `เปิดใช้งานทั้งหมด ${dist.activeItems.length} ข้อ`;
+      ? `เปิดใช้งาน ${dist.activeItems.length} ข้อ (พักไว้ ${eliminatedCount} ข้อ)`
+      : `เปิดใช้งาน ${dist.activeItems.length} ข้อ`;
   btnRestoreEliminated.hidden = eliminatedCount === 0;
 
   if (items.length === 0) {
     const emptyMsg = document.createElement('div');
     emptyMsg.className = 'history-item';
-    emptyMsg.textContent = 'ยังไม่มีคำตอบในชุดนี้ พิมพ์คำตอบด้านบนเพื่อเริ่มใช้งาน';
+    emptyMsg.textContent = 'ยังไม่มีคำตอบ พิมพ์คำตอบด้านบนเพื่อเริ่มใช้งาน';
     choicesListContainer.appendChild(emptyMsg);
     return;
   }
@@ -303,13 +301,13 @@ function renderChoicesList(state, dist) {
     row.className = `choice-row${item.eliminated ? ' is-eliminated' : ''}`;
     row.setAttribute('role', 'listitem');
 
-    // Cell 1: Color Swatch + Editable Label
+    // 1. Color swatch + label
     const cellMain = document.createElement('div');
     cellMain.className = 'choice-cell-main';
 
     const swatch = document.createElement('span');
     swatch.className = 'choice-swatch';
-    swatch.style.backgroundColor = activeInfo ? activeInfo.color.fill : '#D6D3D1';
+    swatch.style.backgroundColor = activeInfo ? activeInfo.color.fill : '#E2E8F0';
 
     const labelInput = document.createElement('input');
     labelInput.type = 'text';
@@ -323,7 +321,7 @@ function renderChoicesList(state, dist) {
 
     cellMain.append(swatch, labelInput);
 
-    // Cell 2: Base Weight Input
+    // 2. Weight input
     const weightInput = document.createElement('input');
     weightInput.type = 'number';
     weightInput.className = 'choice-weight-input';
@@ -336,7 +334,7 @@ function renderChoicesList(state, dist) {
       store.updateItem(item.id, { weight: weightInput.value });
     });
 
-    // Cell 3: Live Probability (%) + Win Count + Visual Bar
+    // 3. Probability % + wins
     const cellProb = document.createElement('div');
     cellProb.className = 'choice-prob-cell';
 
@@ -345,11 +343,11 @@ function renderChoicesList(state, dist) {
 
     const probText = document.createElement('span');
     probText.className = 'choice-prob-pct';
-    probText.textContent = item.eliminated ? 'พักไว้ (0%)' : `P: ${probPct.toFixed(2)}%`;
+    probText.textContent = item.eliminated ? 'พักไว้' : `${probPct.toFixed(1)}%`;
 
     const winsBadge = document.createElement('span');
     winsBadge.className = 'choice-wins-badge';
-    winsBadge.textContent = `ชนะ ${item.wins || 0}`;
+    winsBadge.textContent = item.wins > 0 ? `ชนะ ${item.wins}` : '';
 
     probTop.append(probText, winsBadge);
 
@@ -358,14 +356,11 @@ function renderChoicesList(state, dist) {
     const barFill = document.createElement('div');
     barFill.className = 'choice-prob-bar-fill';
     barFill.style.width = `${Math.min(100, Math.max(0, probPct)).toFixed(1)}%`;
-    if (activeInfo) {
-      barFill.style.backgroundColor = activeInfo.color.fill;
-    }
     barTrack.appendChild(barFill);
 
     cellProb.append(probTop, barTrack);
 
-    // Cell 4: Toggle Active/Eliminated + Delete
+    // 4. Actions
     const cellActions = document.createElement('div');
     cellActions.className = 'choice-actions-cell';
 
@@ -373,7 +368,7 @@ function renderChoicesList(state, dist) {
     btnToggleActive.type = 'button';
     btnToggleActive.className = 'choice-icon-btn';
     btnToggleActive.title = item.eliminated ? 'นำกลับเข้าวงล้อ' : 'พักคำตอบนี้ชั่วคราว';
-    btnToggleActive.textContent = item.eliminated ? '↺' : '👁';
+    btnToggleActive.textContent = item.eliminated ? '↺' : '⏸';
     btnToggleActive.addEventListener('click', () => {
       store.updateItem(item.id, { eliminated: !item.eliminated });
     });
@@ -393,9 +388,6 @@ function renderChoicesList(state, dist) {
   }
 }
 
-/**
- * Renders the session spin history log.
- */
 function renderHistoryList(state) {
   historyCountText.textContent = String(state.history.length);
   historyListContainer.replaceChildren();
@@ -408,7 +400,7 @@ function renderHistoryList(state) {
     return;
   }
 
-  state.history.slice(0, 30).forEach((entry, idx) => {
+  state.history.slice(0, 25).forEach((entry, idx) => {
     const row = document.createElement('div');
     row.className = 'history-item';
 
@@ -429,21 +421,18 @@ function renderHistoryList(state) {
       minute: '2-digit',
       second: '2-digit'
     });
-    meta.textContent = `P: ${Number(entry.probabilityPct).toFixed(2)}% · ${timeStr}`;
+    meta.textContent = `${Number(entry.probabilityPct).toFixed(1)}% · ${timeStr}`;
 
     row.append(left, meta);
     historyListContainer.appendChild(row);
   });
 }
 
-/**
- * Synchronizes full UI and Wheel Canvas whenever store state updates.
- */
 function syncAll(state) {
   sound.setEnabled(state.soundEnabled);
   btnSoundToggle.setAttribute('aria-pressed', String(state.soundEnabled));
   soundIcon.textContent = state.soundEnabled ? '🔊' : '🔇';
-  soundLabel.textContent = state.soundEnabled ? 'เสียง: เปิด' : 'เสียง: ปิด';
+  soundLabel.textContent = state.soundEnabled ? 'เสียง' : 'ปิดเสียง';
 
   currentDistribution = computeDistribution(state.currentPreset.items, state.currentPreset.mode);
   btnPrimarySpin.disabled = currentDistribution.activeItems.length === 0 && !animator.isSpinning();
@@ -461,10 +450,8 @@ function syncAll(state) {
   }
 }
 
-// Subscribe to store updates
 store.subscribe(syncAll);
 
-// Check URL hash (#preset=...) on startup for shared presets
 function checkUrlHashForSharedPreset() {
   const hash = window.location.hash || '';
   if (!hash.startsWith('#preset=')) return;
@@ -475,13 +462,12 @@ function checkUrlHashForSharedPreset() {
     const imported = decodePresetFromUrlPayload(payload);
     store.importValidatedPreset(imported);
     history.replaceState(null, '', window.location.pathname + window.location.search);
-    showToast(`โหลดชุดคำตอบ "${imported.name}" จากลิงก์ที่แชร์สำเร็จ!`);
+    showToast(`โหลดชุดคำตอบ "${imported.name}" สำเร็จ!`);
   } catch {
-    showToast('ลิงก์ชุดคำตอบไม่ถูกต้องหรือเสียหาย ระบบใช้ชุดคำตอบเริ่มต้นแทน');
+    showToast('ลิงก์ชุดคำตอบไม่ถูกต้อง ระบบใช้ชุดคำตอบเริ่มต้นแทน');
   }
 }
 
-// ResizeObserver for crisp high-DPI responsiveness
 const resizeObserver = new ResizeObserver((entries) => {
   for (const entry of entries) {
     const box = entry.contentRect;
@@ -494,75 +480,11 @@ const resizeObserver = new ResizeObserver((entries) => {
 });
 resizeObserver.observe(wheelViewport);
 
-// Interactive 3D Tilt & Drag-to-Spin on the Wheel Canvas
-let dragState = null;
-
-wheelCanvas.addEventListener('pointermove', (e) => {
-  const rect = wheelCanvas.getBoundingClientRect();
-  const nx = ((e.clientX - rect.left) / rect.width - 0.5) * 2;
-  const ny = ((e.clientY - rect.top) / rect.height - 0.5) * 2;
-
-  // Subtle 3D tilt following cursor
-  wheelCanvas.style.transform = `rotateX(${(-ny * 5.5).toFixed(2)}deg) rotateY(${(nx * 5.5).toFixed(2)}deg)`;
-
-  if (dragState && !animator.isSpinning()) {
-    const cx = rect.left + rect.width / 2;
-    const cy = rect.top + rect.height / 2;
-    const currentAngle = Math.atan2(e.clientY - cy, e.clientX - cx);
-    const delta = currentAngle - dragState.lastAngle;
-    dragState.lastAngle = currentAngle;
-    dragState.movedDistance += Math.abs(delta);
-
-    const newRot = animator.getRotation() + delta;
-    animator.setRotation(newRot);
-    renderer.renderFrame(newRot, 0, false);
-    updatePointerHud(getSliceAtPointer(currentDistribution, newRot));
-  }
+// Stationary Wheel Click Handler: Clicking the wheel or center SPIN button spins cleanly without wobble
+wheelCanvas.addEventListener('click', () => {
+  triggerSpinOrSkip();
 });
 
-wheelCanvas.addEventListener('pointerleave', () => {
-  wheelCanvas.style.transform = 'rotateX(0deg) rotateY(0deg)';
-});
-
-wheelCanvas.addEventListener('pointerdown', (e) => {
-  sound.unlock();
-  if (animator.isSpinning()) {
-    triggerSpinOrSkip();
-    return;
-  }
-  const rect = wheelCanvas.getBoundingClientRect();
-  const cx = rect.left + rect.width / 2;
-  const cy = rect.top + rect.height / 2;
-  const distFromCenter = Math.hypot(e.clientX - cx, e.clientY - cy);
-
-  // Clicking center SPIN hub directly spins immediately
-  if (distFromCenter <= rect.width * 0.12) {
-    triggerSpinOrSkip();
-    return;
-  }
-
-  wheelCanvas.setPointerCapture(e.pointerId);
-  dragState = {
-    pointerId: e.pointerId,
-    lastAngle: Math.atan2(e.clientY - cy, e.clientX - cx),
-    movedDistance: 0,
-    startTime: performance.now()
-  };
-});
-
-wheelCanvas.addEventListener('pointerup', (e) => {
-  if (!dragState || dragState.pointerId !== e.pointerId) return;
-  const elapsed = performance.now() - dragState.startTime;
-  const moved = dragState.movedDistance;
-  dragState = null;
-
-  // Either a quick tap or a deliberate swipe/flick triggers a full CSPRNG spin
-  if (moved < 0.08 || moved > 0.14 || elapsed < 260) {
-    triggerSpinOrSkip();
-  }
-});
-
-// Keyboard accessibility: Space or Enter on canvas (or global Space when not typing in an input)
 window.addEventListener('keydown', (e) => {
   const tag = document.activeElement?.tagName;
   const isTyping = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
@@ -575,7 +497,6 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
-// Button Event Listeners
 btnPrimarySpin.addEventListener('click', triggerSpinOrSkip);
 
 btnResetStats.addEventListener('click', () => {
@@ -583,7 +504,7 @@ btnResetStats.addEventListener('click', () => {
   highlightedWinnerId = null;
   winnerBanner.hidden = true;
   store.resetSessionStats();
-  showToast('รีเซ็ตสถิติจำนวนครั้งที่ชนะและคืนค่าทุกตัวเลือกเรียบร้อยแล้ว');
+  showToast('รีเซ็ตสถิติและคืนค่าตัวเลือกทั้งหมดเรียบร้อย');
 });
 
 btnCloseWinner.addEventListener('click', () => {
@@ -602,10 +523,10 @@ btnShareUrl.addEventListener('click', async () => {
     const shareUrl = `${window.location.origin}${window.location.pathname}#preset=${payload}`;
     if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
       await navigator.clipboard.writeText(shareUrl);
-      showToast('คัดลอกลิงก์แชร์ชุดคำตอบลง Clipboard แล้ว! ส่งให้เพื่อนเปิดได้เลย');
+      showToast('คัดลอกลิงก์ชุดคำตอบลง Clipboard แล้ว');
     } else {
       window.location.hash = `preset=${payload}`;
-      showToast('อัปเดตลิงก์บนแถบ URL ด้านบนแล้ว คัดลอก URL ไปแชร์ได้เลย');
+      showToast('อัปเดตลิงก์บนแถบ URL แล้ว คัดลอกไปแชร์ได้เลย');
     }
   } catch {
     showToast('ไม่สามารถสร้างลิงก์แชร์ได้');
@@ -621,7 +542,7 @@ presetSelect.addEventListener('change', () => {
 
 btnNewPreset.addEventListener('click', () => {
   nameFormMode = 'new';
-  inputPresetName.value = `ชุดคำตอบใหม่ #${store.getState().presets.length + 1}`;
+  inputPresetName.value = `ชุดคำตอบ #${store.getState().presets.length + 1}`;
   presetNameForm.hidden = false;
   inputPresetName.focus();
   inputPresetName.select();
@@ -645,10 +566,10 @@ presetNameForm.addEventListener('submit', (e) => {
   if (!name) return;
   if (nameFormMode === 'new') {
     store.createNewPreset(name);
-    showToast(`สร้างชุดคำตอบ "${name}" เรียบร้อยแล้ว`);
+    showToast(`สร้างชุดคำตอบ "${name}" แล้ว`);
   } else {
     store.saveCurrentPresetAs(name);
-    showToast(`เปลี่ยนชื่อชุดคำตอบเป็น "${name}" เรียบร้อยแล้ว`);
+    showToast(`เปลี่ยนชื่อเป็น "${name}" แล้ว`);
   }
   presetNameForm.hidden = true;
 });
@@ -673,7 +594,7 @@ btnExportJson.addEventListener('click', () => {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
-  showToast('ดาวน์โหลดไฟล์ Preset .JSON เรียบร้อยแล้ว');
+  showToast('ดาวน์โหลดไฟล์ .JSON เรียบร้อย');
 });
 
 inputImportJson.addEventListener('change', async () => {
@@ -688,28 +609,22 @@ inputImportJson.addEventListener('change', async () => {
     const imported = store.importValidatedPreset(parsed);
     showToast(`นำเข้าชุดคำตอบ "${imported.name}" สำเร็จ!`);
   } catch {
-    showToast('ไฟล์ JSON ไม่ถูกต้องหรือมีโครงสร้างไม่ปลอดภัย');
+    showToast('ไฟล์ JSON ไม่ถูกต้อง');
   } finally {
     inputImportJson.value = '';
   }
 });
 
-// Probability Mode Controls
+// Direct 3-Pill Mode Selection
 btnModeIndependent.addEventListener('click', () => {
   store.setMode('independent');
 });
 
-btnModeHistory.addEventListener('click', () => {
-  store.setMode(lastHistorySubMode);
-});
-
 btnSubModeBalance.addEventListener('click', () => {
-  lastHistorySubMode = 'balance';
   store.setMode('balance');
 });
 
 btnSubModeMomentum.addEventListener('click', () => {
-  lastHistorySubMode = 'momentum';
   store.setMode('momentum');
 });
 
@@ -717,7 +632,7 @@ chkEliminateWinner.addEventListener('change', () => {
   store.setEliminateWinner(chkEliminateWinner.checked);
 });
 
-// Add Choice & Bulk Edit Controls
+// Add Choice & Bulk Edit
 addChoiceForm.addEventListener('submit', (e) => {
   e.preventDefault();
   const label = inputNewLabel.value.trim();
@@ -732,7 +647,7 @@ addChoiceForm.addEventListener('submit', (e) => {
 
 btnRestoreEliminated.addEventListener('click', () => {
   store.restoreEliminatedItems();
-  showToast('นำตัวเลือกที่ถูกพักไว้กลับเข้าวงล้อทั้งหมดแล้ว');
+  showToast('คืนค่าตัวเลือกที่พักไว้ทั้งหมดแล้ว');
 });
 
 btnToggleBulkEdit.addEventListener('click', () => {
@@ -756,7 +671,7 @@ btnCancelBulk.addEventListener('click', () => {
 btnApplyBulk.addEventListener('click', () => {
   store.replaceItemsFromBulkText(textareaBulk.value);
   bulkEditPanel.hidden = true;
-  showToast('อัปเดตรายการคำตอบจากข้อความหลายบรรทัดเรียบร้อยแล้ว');
+  showToast('อัปเดตรายการคำตอบเรียบร้อย');
 });
 
 // 100,000-Spin Chi-Squared Fairness Audit
@@ -764,18 +679,15 @@ btnRunAudit.addEventListener('click', () => {
   const state = store.getState();
   const audit = runFairnessAudit(state.currentPreset.items, state.currentPreset.mode, 100000);
   if (audit.trials === 0) {
-    showToast('ต้องมีตัวเลือกที่เปิดใช้งานอย่างน้อย 1 ข้อเพื่อรันการพิสูจน์');
+    showToast('ต้องมีตัวเลือกอย่างน้อย 1 ข้อ');
     return;
   }
 
   auditResultPanel.hidden = false;
-  auditStatusBadge.textContent = audit.passed
-    ? '✓ PASS (แฟร์ตามทฤษฎีคณิตศาสตร์)'
-    : '⚠ p-value ต่ำกว่าเกณฑ์ (ลองรันซ้ำเพื่อตรวจ)';
-  auditStatusBadge.className = `audit-metric__value ${audit.passed ? 'audit-pass' : ''}`;
-  auditChiSquareVal.textContent = `${audit.chiSquare.toFixed(3)} (df=${audit.degreesOfFreedom})`;
+  auditStatusBadge.textContent = audit.passed ? '✓ PASS (แฟร์ตามทฤษฎี)' : '⚠ ลองรันซ้ำ';
+  auditChiSquareVal.textContent = `${audit.chiSquare.toFixed(2)} (df=${audit.degreesOfFreedom})`;
   auditPValueVal.textContent = audit.pValue.toFixed(4);
-  auditErrorTimeVal.textContent = `±${audit.maxRelativeErrorPct.toFixed(2)}% · ${audit.durationMs}ms`;
+  auditErrorTimeVal.textContent = `±${audit.maxRelativeErrorPct.toFixed(2)}% (${audit.durationMs}ms)`;
 
   auditBarsContainer.replaceChildren();
   const maxPct = Math.max(...audit.results.map((r) => Math.max(r.observedPct, r.probabilityPct)), 1);
@@ -804,6 +716,5 @@ btnRunAudit.addEventListener('click', () => {
   }
 });
 
-// Initialize app
 checkUrlHashForSharedPreset();
 syncAll(store.getState());
