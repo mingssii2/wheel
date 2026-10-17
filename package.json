@@ -1,0 +1,10 @@
+{
+  "name": "provably-fair-web-wheel",
+  "version": "1.0.0",
+  "description": "Zero-dependency, cryptographically fair decision wheel web application for GitHub Pages",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  },
+  "license": "MIT"
+}
