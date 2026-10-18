@@ -72,23 +72,13 @@
         💡 <strong>กดปุ่ม SPIN</strong> หรือ <strong>ใช้นิ้ว/เมาส์ลากวงล้อแล้วสะบัดหมุน</strong> (หากดึงเบาเกินไป แรงโน้มถ่วง <code>g</code> ด้านล่างจะดึงวงล้อหมุนกลับตามฟิสิกส์จริง)
       </p>
 
-      <!-- Winner Spotlight Result Card -->
-      <div id="winnerBanner" class="winner-banner" hidden>
-        <div class="winner-banner__top">
-          <span class="winner-banner__tag">🏆 ผลลัพธ์ที่สุ่มได้</span>
-          <button type="button" id="btnCloseWinner" class="icon-btn" aria-label="ปิด">✕</button>
-        </div>
-        <div class="winner-banner__name" id="winnerNameText">—</div>
-        <div class="winner-banner__stats" id="winnerStatsText">โอกาสออก 0.00%</div>
-      </div>
-
-      <!-- Primary Spin Controls & Speed Selector -->
+      <!-- Primary Spin Controls & Speed Selector (Heavy Flywheel Inertia) -->
       <div class="spin-action-zone">
         <div class="speed-selector" role="group" aria-label="ความเร็วการหมุน">
           <span class="speed-selector__label">ความเร็วหมุน:</span>
-          <button type="button" class="speed-pill" data-speed="fast">⚡ เร็ว (1.8วิ)</button>
-          <button type="button" class="speed-pill is-active" data-speed="normal">🎯 ปกติ (3.8วิ)</button>
-          <button type="button" class="speed-pill" data-speed="slow">🔥 ลุ้นนาน (6.5วิ)</button>
+          <button type="button" class="speed-pill" data-speed="fast">⚡ เร็ว (3.4วิ)</button>
+          <button type="button" class="speed-pill is-active" data-speed="normal">🎯 ปกติ (6.0วิ)</button>
+          <button type="button" class="speed-pill" data-speed="slow">🐢 ช้าลุ้นนาน (9.5วิ)</button>
         </div>
 
         <button type="button" id="btnPrimarySpin" class="btn btn--gold btn--hero">
@@ -290,6 +280,38 @@
       </div>
     </section>
   </main>
+
+  <!-- Full-Screen Winner Popup Modal Overlay (🏆 ผลลัพธ์ที่สุ่มได้) -->
+  <div
+    id="winnerBanner"
+    class="winner-modal-backdrop"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="winnerModalTitle"
+    hidden
+  >
+    <div class="winner-modal-card">
+      <div class="winner-modal__header">
+        <span class="winner-modal__badge" id="winnerModalTitle">🏆 ผลลัพธ์ที่สุ่มได้</span>
+        <button type="button" id="btnCloseWinner" class="winner-modal__close" aria-label="ปิดหน้าต่างผลลัพธ์">
+          ✕
+        </button>
+      </div>
+
+      <div class="winner-modal__trophy" aria-hidden="true">🏆</div>
+      <div class="winner-modal__name" id="winnerNameText">—</div>
+      <div class="winner-modal__stats" id="winnerStatsText">โอกาสออก 0.00%</div>
+
+      <div class="winner-modal__actions">
+        <button type="button" id="btnSpinAgainModal" class="btn btn--gold winner-modal__btn">
+          🎯 หมุนอีกครั้ง
+        </button>
+        <button type="button" id="btnDismissWinnerModal" class="btn btn--glass winner-modal__btn">
+          ✓ ตกลง
+        </button>
+      </div>
+    </div>
+  </div>
 
   <script type="module" src="./js/main.js"></script>
 </body>

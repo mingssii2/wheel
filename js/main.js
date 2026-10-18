@@ -30,9 +30,9 @@ const store = createStore();
 const sound = createSoundEngine();
 
 const SPIN_SPEED_CONFIG = {
-  fast: { duration: 1800, minSpins: 4, maxSpins: 5 },
-  normal: { duration: 3800, minSpins: 6, maxSpins: 8 },
-  slow: { duration: 6500, minSpins: 9, maxSpins: 12 }
+  fast: { duration: 3400, minSpins: 2, maxSpins: 3 },
+  normal: { duration: 6000, minSpins: 3, maxSpins: 4 },
+  slow: { duration: 9500, minSpins: 5, maxSpins: 6 }
 };
 
 // Minimum angular velocity (rad/s) required when flicking the wheel to trigger a full spin.
@@ -64,6 +64,8 @@ const winnerBanner = document.getElementById('winnerBanner');
 const winnerNameText = document.getElementById('winnerNameText');
 const winnerStatsText = document.getElementById('winnerStatsText');
 const btnCloseWinner = document.getElementById('btnCloseWinner');
+const btnSpinAgainModal = document.getElementById('btnSpinAgainModal');
+const btnDismissWinnerModal = document.getElementById('btnDismissWinnerModal');
 
 const storageStatusTag = document.getElementById('storageStatusTag');
 const presetSelect = document.getElementById('presetSelect');
@@ -200,13 +202,13 @@ function triggerSpinOrSkip(direction = 1, flickSpeedRadPerSec = null) {
   const { winnerEntry } = sample;
   const speedCfg = SPIN_SPEED_CONFIG[selectedSpeedKey] || SPIN_SPEED_CONFIG.normal;
 
-  // If triggered by a physical flick gesture, scale extra spins slightly with flick speed
+  // If triggered by a physical flick gesture, scale extra spins gently for a heavy wheel
   let minSpins = speedCfg.minSpins;
   let maxSpins = speedCfg.maxSpins;
   let duration = speedCfg.duration;
   if (flickSpeedRadPerSec !== null) {
-    const boost = Math.min(4, Math.floor(Math.abs(flickSpeedRadPerSec) / 6));
-    minSpins = Math.max(3, minSpins + boost - 1);
+    const boost = Math.min(2, Math.floor(Math.abs(flickSpeedRadPerSec) / 9));
+    minSpins = Math.max(2, minSpins + boost);
     maxSpins = Math.max(minSpins + 1, maxSpins + boost);
   }
 
@@ -646,6 +648,25 @@ btnResetStats.addEventListener('click', () => {
 
 btnCloseWinner.addEventListener('click', () => {
   winnerBanner.hidden = true;
+});
+
+if (btnDismissWinnerModal) {
+  btnDismissWinnerModal.addEventListener('click', () => {
+    winnerBanner.hidden = true;
+  });
+}
+
+if (btnSpinAgainModal) {
+  btnSpinAgainModal.addEventListener('click', () => {
+    winnerBanner.hidden = true;
+    triggerSpinOrSkip(1, null);
+  });
+}
+
+winnerBanner.addEventListener('click', (e) => {
+  if (e.target === winnerBanner) {
+    winnerBanner.hidden = true;
+  }
 });
 
 btnSoundToggle.addEventListener('click', () => {

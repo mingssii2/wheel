@@ -34,7 +34,8 @@ export function physicalSpinCurve(tau, overshootRatio = 0.008) {
   if (t <= peakTau) {
     const u = t / peakTau;
     const inv = 1 - u;
-    const eased = 1 - inv * inv * inv * inv;
+    // Heavier rotational inertia: gentler initial angular velocity than quartic (p=2.5 vs p=4)
+    const eased = 1 - Math.pow(inv, 2.5);
     return eased * (1 + overshootRatio);
   }
 
@@ -58,7 +59,7 @@ export function createWheelAnimator({ onFrame, onSliceTick, onComplete, onRollba
   let startRotationRad = 0;
   let targetRotationRad = 0;
   let startTimeMs = 0;
-  let durationMs = 3800;
+  let durationMs = 6000;
   let mode = 'idle'; // 'idle' | 'dragging' | 'gravity_rollback' | 'spinning' | 'celebrating'
   let rafId = null;
   let activeDistribution = null;
@@ -205,17 +206,17 @@ export function createWheelAnimator({ onFrame, onSliceTick, onComplete, onRollba
     // Angular displacement from the bottom-heavy equilibrium anchor
     const displacement = rotationRad - gravityAnchorRad;
 
-    // Downward gravity restoring torque: tau_g = -(g / R) * sin(displacement)
-    // Combined with rotational spring stiffness near equilibrium so even large displacements roll back smoothly
-    const gravityTorque = -14.5 * Math.sin(displacement) - 4.2 * displacement;
-    const viscousDamping = -3.6 * angularVelocity;
+    // Downward gravity restoring torque: tau_g / I = -(m * g * r / I) * sin(displacement)
+    // High rotational inertia I makes the heavy wheel roll back slowly and deliberately
+    const gravityTorque = -7.5 * Math.sin(displacement) - 2.2 * displacement;
+    const viscousDamping = -2.4 * angularVelocity;
 
     const angularAccel = gravityTorque + viscousDamping;
     angularVelocity += angularAccel * dt;
     rotationRad += angularVelocity * dt;
 
     const directionSign = angularVelocity >= 0 ? 1 : -1;
-    const normalizedSpeed = Math.min(1, Math.abs(angularVelocity) / 10);
+    const normalizedSpeed = Math.min(1, Math.abs(angularVelocity) / 8);
     const currentSlice = checkPegCrossing(rotationRad, normalizedSpeed, directionSign);
 
     stepSpringAndParticles(dt);
@@ -316,7 +317,7 @@ export function createWheelAnimator({ onFrame, onSliceTick, onComplete, onRollba
   return {
     startSpin({
       targetRotation,
-      duration = 3800,
+      duration = 6000,
       distribution,
       resultPayload,
       reducedMotion = false,
@@ -340,7 +341,7 @@ export function createWheelAnimator({ onFrame, onSliceTick, onComplete, onRollba
         const currentMod = ((rotationRad % TWO_PI) + TWO_PI) % TWO_PI;
         let deltaBack = desiredMod - currentMod;
         if (deltaBack >= 0) deltaBack -= TWO_PI;
-        const approxRevs = Math.max(4, Math.round(totalForward / TWO_PI));
+        const approxRevs = Math.max(2, Math.round(totalForward / TWO_PI));
         targetRotationRad = rotationRad - approxRevs * TWO_PI + deltaBack;
       } else {
         targetRotationRad = reducedMotion
@@ -348,7 +349,7 @@ export function createWheelAnimator({ onFrame, onSliceTick, onComplete, onRollba
           : targetRotation;
       }
 
-      durationMs = reducedMotion ? 700 : duration;
+      durationMs = reducedMotion ? 900 : duration;
       startTimeMs = performance.now();
       lastPhysicsTimeMs = startTimeMs;
       mode = 'spinning';
@@ -381,16 +382,17 @@ export function createWheelAnimator({ onFrame, onSliceTick, onComplete, onRollba
     },
 
     /**
-     * Updates wheel rotation while user drags with finger/mouse.
+     * Updates wheel rotation while user drags with finger/mouse (with heavy flywheel inertia).
      */
     dragBy(deltaRad, dtSeconds) {
       if (mode !== 'dragging') return;
-      rotationRad += deltaRad;
-      const instantVel = deltaRad / Math.max(0.004, dtSeconds);
-      angularVelocity = angularVelocity * 0.45 + instantVel * 0.55;
+      const weightedDelta = deltaRad * 0.78;
+      rotationRad += weightedDelta;
+      const instantVel = weightedDelta / Math.max(0.004, dtSeconds);
+      angularVelocity = angularVelocity * 0.55 + instantVel * 0.45;
 
-      const directionSign = deltaRad >= 0 ? 1 : -1;
-      const speedNorm = Math.min(1, Math.abs(angularVelocity) / 14);
+      const directionSign = weightedDelta >= 0 ? 1 : -1;
+      const speedNorm = Math.min(1, Math.abs(angularVelocity) / 11);
       const currentSlice = checkPegCrossing(rotationRad, speedNorm, directionSign);
       stepSpringAndParticles(Math.min(0.03, dtSeconds));
 
